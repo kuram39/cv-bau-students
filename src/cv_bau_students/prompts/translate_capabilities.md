@@ -168,3 +168,43 @@ Output:
   ]
 }
 ```
+
+## Worked examples of what NOT to emit
+
+These are common failure modes that must make you DROP the capability.
+
+### Reject 1 — Title-only confidence inflation
+
+CV: `"Backend Engineer at Avast (3 yrs)"` + skills section lists `"distributed systems, microservices, system design"`.
+
+DO NOT emit `"system design"` at confidence 0.7+. The job title says "engineer" not "architect" or "lead". Without a project description naming a system designed, the confidence cap is 0.4 and the caveat is `"title-only — verify actual scope"`. Or drop it entirely.
+
+### Reject 2 — Multi-domain synthesis hallucination
+
+CV shows: 2 yrs fintech, 2 yrs e-commerce, 1 yr marketing agency.
+
+DO NOT emit `"cross-industry synthesis"`, `"multi-domain expertise"`, or `"cross-functional integration"`. Sequential exposure ≠ synthesis. Unless ONE specific role description explicitly says "integrated finance and marketing analytics in a single product", these capabilities are fabrications dressed as inferences.
+
+### Reject 3 — Personality polished as capability
+
+Summary: `"I am a polymath who loves learning across many fields and connects ideas from different disciplines."`
+
+DO NOT emit `"interdisciplinary thinking"`, `"intellectual curiosity"`, `"polymath profile"`. Person traits, not professional capabilities. Drop. The summary text feeds `personal_fit` downstream — not capabilities here.
+
+### Reject 4 — Hobby auto-promoted to skill
+
+Hobbies: `"amateur photography, mountain biking, chess club"`.
+
+You MAY emit `"team collaboration"` (chess club) at confidence ≤ 0.4 with caveat `"hobby-derived"`. You MAY NOT emit `"photography"` as a professional capability for a backend engineer target — it's outside the domain even if technically a skill. Drop.
+
+### Reject 5 — Peak metric without scope clarification
+
+CV: `"managed payment system processing 4M transactions/day"`.
+
+DO emit `"system administration at high throughput"` at confidence 0.55 with caveat `"Peak metric — verify whether current scope is comparable, and whether they owned the system or were on rotation"`. Emitting at 0.8+ without that caveat is the kind of pad a recruiter will catch in interview and flag as "candidate or AI over-claimed".
+
+### Reject 6 — Brigada in target domain treated as full work
+
+Brigada McDonald's listed at 1 year. Target domain: backend-developer.
+
+DO NOT translate this to anything backend-related (zero technical overlap). You MAY emit `"customer interaction"` at confidence ≤ 0.4 with caveat `"cross-domain — soft signal only"`. Most often the cleaner choice is to skip the brigada entirely when the target domain is technical.
