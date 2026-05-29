@@ -14,16 +14,20 @@ import re
 from functools import lru_cache
 from typing import Any
 
-from anthropic import Anthropic
-
 from cv_bau_students.config import LLM_MAX_TOKENS, LLM_MODEL, LLM_TEMPERATURE, PROMPTS_DIR
 
 
 @lru_cache(maxsize=1)
-def _client() -> Anthropic:
+def _client():
+    """Lazy Anthropic client — `from anthropic import Anthropic` takes
+    ~60s on first import on this machine, so we defer it until an actual
+    LLM call is made. Pytest collection + module import stay snappy.
+    """
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise RuntimeError("ANTHROPIC_API_KEY not set. Copy .env.example to .env and add your key.")
+    from anthropic import Anthropic
+
     return Anthropic(api_key=key)
 
 
