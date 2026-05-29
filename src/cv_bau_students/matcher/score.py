@@ -22,7 +22,7 @@ from cv_bau_students.config import (
     WEIGHT_PERSONAL_FIT,
     WEIGHT_SKILL_FIT,
 )
-from cv_bau_students.levels.repo import bridge_plan
+from cv_bau_students.levels.repo import bridge_plan, checklist_exists
 from cv_bau_students.models import (
     CandidateProfile,
     GapItem,
@@ -45,20 +45,31 @@ def score_match(
 
     skill_fit = _skill_fit(candidate_skill_ids, ad_must_ids, ad_nice_ids)
     gaps = bridge_plan(ad.domain, ad.level, candidate_skill_ids)
-    bridge_fit = _bridge_fit(gaps)
+    has_rubric = checklist_exists(ad.domain, ad.level)
+    bridge_fit = _bridge_fit(gaps, has_rubric=has_rubric)
     personal_fit = _personal_fit(profile, ad)
 
-    total = (
-        WEIGHT_SKILL_FIT * skill_fit
-        + WEIGHT_BRIDGE_FIT * bridge_fit
-        + WEIGHT_PERSONAL_FIT * personal_fit
-    )
+    # When no rubric exists, drop bridge axis from the weighted sum and
+    # rebalance the remaining weights — otherwise we'd be averaging
+    # against an unknown value, which inflates the total.
+    if bridge_fit is None:
+        denom = WEIGHT_SKILL_FIT + WEIGHT_PERSONAL_FIT
+        total = (WEIGHT_SKILL_FIT * skill_fit + WEIGHT_PERSONAL_FIT * personal_fit) / denom
+    else:
+        total = (
+            WEIGHT_SKILL_FIT * skill_fit
+            + WEIGHT_BRIDGE_FIT * bridge_fit
+            + WEIGHT_PERSONAL_FIT * personal_fit
+        )
     band = _confidence_band(capabilities)
     assert ad.id is not None
     return MatchScore(
         ad_id=ad.id,
         skill_fit=round(skill_fit, 1),
-        bridge_fit=round(bridge_fit, 1),
+        # Bridge_fit is a float ≥ 0; encode "no rubric" as -1.0 so the
+        # Pydantic Field(ge=0, le=100) doesn't reject it. The UI maps
+        # -1.0 back to "N/A". Documented in the model.
+        bridge_fit=round(bridge_fit, 1) if bridge_fit is not None else -1.0,
         personal_fit=round(personal_fit, 1),
         total=round(total, 1),
         confidence_band=round(band, 1),
@@ -85,14 +96,16 @@ def _skill_fit(candidate: set[int], must: set[int], nice: set[int]) -> float:
     return (must_score * must_weight + nice_score * nice_weight) / (must_weight + nice_weight)
 
 
-def _bridge_fit(gaps: list[GapItem]) -> float:
+def _bridge_fit(gaps: list[GapItem], *, has_rubric: bool) -> float | None:
     """Closer-to-bridged → higher score. 100 = nothing missing; 0 = at least
     one experience-only gap that the candidate can't shortcut.
 
-    Bridgeable gaps cost score proportional to their bridge_months;
-    experience-only gaps short-circuit to a low cap so the recruiter
-    sees the wall.
+    Returns None when no checklist row exists for the ad's (domain,
+    level) — the matcher then drops the axis from the weighted sum
+    rather than fabricating a perfect-ready score from absent data.
     """
+    if not has_rubric:
+        return None
     if not gaps:
         return 100.0
     if any(g.bridgeable_in_months is None for g in gaps):

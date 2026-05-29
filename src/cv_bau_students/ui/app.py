@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import streamlit as st
 from dotenv import load_dotenv
 
-from cv_bau_students.db import init_db
+from cv_bau_students.bootstrap import ensure_seeded, prewarm_llm
 from cv_bau_students.jobads.repo import list_ads
 from cv_bau_students.models import CandidateAnalysis, JobAd, MatchScore
 from cv_bau_students.pipeline import analyze_candidate
@@ -48,9 +48,12 @@ def _render_student_match(match: MatchScore) -> None:
     with st.container():
         st.markdown(f"**📚 Student** · {title}")
         st.progress(min(1.0, match.total / 100))
+        bridge_label = (
+            f"bridge {match.bridge_fit}" if match.bridge_fit >= 0 else "bridge N/A (no rubric)"
+        )
         st.caption(
             f"Total {match.total} ± {match.confidence_band} | "
-            f"skill {match.skill_fit} | bridge {match.bridge_fit} | "
+            f"skill {match.skill_fit} | {bridge_label} | "
             f"personal {match.personal_fit}"
         )
         if match.bridge_plan:
@@ -90,7 +93,8 @@ if not os.environ.get("ANTHROPIC_API_KEY"):
     st.error("Chybí `ANTHROPIC_API_KEY`. Lokálně: `.env`. Cloud: Streamlit Secrets.")
     st.stop()
 
-init_db()
+ensure_seeded()
+prewarm_llm()
 
 TYPE_BADGE = {
     "student": "📚 Student",

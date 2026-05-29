@@ -116,6 +116,20 @@ def test_bridge_fit_drops_when_experience_only_gap_present():
     assert score.bridge_fit <= 35
 
 
+def test_bridge_fit_is_minus_one_when_no_rubric_for_domain():
+    """Ad with a domain we have no checklist for (e.g. 'data-engineer')
+    must NOT produce bridge_fit=100. Returns -1.0 sentinel which the UI
+    renders as 'N/A (no rubric)'."""
+    profile = _student_profile()
+    ad = _data_analyst_junior_ad().model_copy(update={"domain": "data-engineer-not-in-checklist"})
+    stored = _store_and_fetch_ad(ad)
+    score = score_match(profile, [], stored)
+    assert score.bridge_fit == -1.0
+    # Total must be a weighted average of skill_fit + personal_fit only,
+    # NOT a 0 from the missing rubric being treated as a hard zero.
+    assert score.total > 0
+
+
 def test_rank_candidate_returns_top_n_sorted_by_total():
     profile = _student_profile()
     _store_and_fetch_ad(_data_analyst_junior_ad())

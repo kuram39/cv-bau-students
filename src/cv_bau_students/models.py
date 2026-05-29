@@ -151,7 +151,10 @@ class JobAd(BaseModel):
 class MatchScore(BaseModel):
     ad_id: int
     skill_fit: float = Field(ge=0.0, le=100.0)
-    bridge_fit: float = Field(ge=0.0, le=100.0)
+    # -1.0 = no rubric for this (domain, level); UI maps to "N/A".
+    # Real fix per Phase 11+ is to extend the level checklist to cover
+    # every domain in the corpus.
+    bridge_fit: float = Field(ge=-1.0, le=100.0)
     personal_fit: float = Field(ge=0.0, le=100.0)
     total: float = Field(ge=0.0, le=100.0)
     confidence_band: float  # ± points around total
