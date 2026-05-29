@@ -30,6 +30,11 @@ def _normalise(record: dict) -> JobAd | None:
     must_have = _list_field(record, ("must_have", "requirements", "skills_required"))
     nice_to_have = _list_field(record, ("nice_to_have", "preferred", "skills_nice"))
 
+    # Surface the Jobs.cz "suitable_for_graduate" flag in raw_text so the
+    # translator + reasoning LLMs see it. Cheap signal worth preserving.
+    if record.get("suitable_for_graduate"):
+        raw_text = "[GRAD-FRIENDLY] " + raw_text
+
     return JobAd(
         title=title,
         employer=record.get("company") or record.get("employer"),
@@ -70,12 +75,27 @@ def _languages(record: dict) -> list[LanguageRequirement]:
     return out
 
 
+def _truncate_job_ads() -> None:
+    """Idempotent: wipe the job_ads + job_ad_skills tables before each
+    normalisation run so re-loading the scraped corpus doesn't pile up
+    duplicate rows."""
+    from sqlalchemy import delete
+
+    from cv_bau_students.db import get_session
+    from cv_bau_students.db_models import JobAdRow, JobAdSkill
+
+    with get_session() as session:
+        session.execute(delete(JobAdSkill))
+        session.execute(delete(JobAdRow))
+
+
 def main() -> int:
     if not SCRAPED_ADS_DIR.exists():
         print(f"No scraped-ads directory at {SCRAPED_ADS_DIR}", file=sys.stderr)
         return 1
 
     init_db()
+    _truncate_job_ads()
     written = 0
     for file in sorted(Path(SCRAPED_ADS_DIR).glob("*.json")):
         with file.open(encoding="utf-8") as f:
