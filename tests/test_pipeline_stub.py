@@ -79,7 +79,7 @@ def test_analyze_candidate_runs_full_phase2_pipeline():
     # Language always comes from the deterministic detector, never the LLM.
     assert result.profile.language == "cs"
     assert result.profile.candidate_type == "student"
-    assert result.processing_metadata["pipeline_phase"] == "2-detector"
+    assert result.processing_metadata["pipeline_phase"] == "3-completion"
     assert result.processing_metadata["detector_llm_agrees"] is True
     assert result.processing_metadata["raw_text_chars"] > 0
 
