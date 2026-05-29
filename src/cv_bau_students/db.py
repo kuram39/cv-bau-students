@@ -13,16 +13,27 @@ from functools import lru_cache
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
-from cv_bau_students.config import DB_URL
+from cv_bau_students import config
 from cv_bau_students.db_models import Base
 
 
 @lru_cache(maxsize=1)
 def _engine() -> Engine:
-    # SQLite WAL mode keeps reads non-blocking for concurrent workers.
-    connect_args = {"check_same_thread": False} if DB_URL.startswith("sqlite") else {}
-    engine = create_engine(DB_URL, connect_args=connect_args, future=True)
+    # Read DB_URL at call time, not import time — `reset_engine_for_tests`
+    # mutates the config module's attribute.
+    url = config.DB_URL
+    connect_args: dict = {}
+    pool_kwargs: dict = {}
+    if url.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
+        if ":memory:" in url:
+            # StaticPool reuses one connection so a per-test :memory: DB
+            # persists across the test (otherwise each session would get
+            # a fresh, empty DB).
+            pool_kwargs["poolclass"] = StaticPool
+    engine = create_engine(url, connect_args=connect_args, future=True, **pool_kwargs)
     return engine
 
 
@@ -38,10 +49,11 @@ def init_db() -> None:
     migrations beyond the prototype need alembic; for now the schema is
     small enough that `create_all` is the contract.
     """
-    if DB_URL.startswith("sqlite:///") and ":memory:" not in DB_URL:
+    url = config.DB_URL
+    if url.startswith("sqlite:///") and ":memory:" not in url:
         from pathlib import Path
 
-        db_path = Path(DB_URL.replace("sqlite:///", "", 1))
+        db_path = Path(url.replace("sqlite:///", "", 1))
         db_path.parent.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(_engine())
 

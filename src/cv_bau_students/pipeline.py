@@ -14,6 +14,7 @@ from cv_bau_students.config import COMPLETION_MAX_ROUNDS
 from cv_bau_students.detector.classify import classify
 from cv_bau_students.extractors import document
 from cv_bau_students.extractors.profile import extract_profile
+from cv_bau_students.matcher.rank import rank_candidate
 from cv_bau_students.models import CandidateAnalysis, CompletionRound
 from cv_bau_students.translator.translate import translate
 
@@ -79,7 +80,9 @@ def analyze_candidate(
     # language capabilities. Confidence floor + dedup happen inside.
     translated = translate(profile)
 
-    # TODO Phase 6: matcher
+    # Phase 6 — rank ads via hard filter + 3-axis scoring.
+    matches = rank_candidate(profile, translated)
+
     # TODO Phase 7: reasoning
 
     final_missing = diagnose_missing(profile)
@@ -88,15 +91,17 @@ def analyze_candidate(
         profile=profile,
         completion_rounds=completion_rounds,
         translated_capabilities=translated,
+        matches=matches,
         missing_fields=final_missing,
         processing_metadata={
             "filename": filename,
             "elapsed_seconds": round(time.time() - started, 2),
             "raw_text_chars": len(raw_text),
-            "pipeline_phase": "4-translator",
+            "pipeline_phase": "6-matcher",
             "detector_llm_agrees": classification.llm_agrees,
             "detector_reasons": classification.reasons,
             "completion_rounds_run": len(completion_rounds),
             "translated_capability_count": len(translated),
+            "matched_ads": len(matches),
         },
     )
