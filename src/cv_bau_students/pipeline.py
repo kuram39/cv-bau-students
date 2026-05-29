@@ -12,6 +12,7 @@ from cv_bau_students.completion.ask import ask, fold_answers_into_profile
 from cv_bau_students.completion.diagnose import diagnose_missing
 from cv_bau_students.config import COMPLETION_MAX_ROUNDS
 from cv_bau_students.detector.classify import classify
+from cv_bau_students.explanation.reason import reason_for_ranking
 from cv_bau_students.extractors import document
 from cv_bau_students.extractors.profile import extract_profile
 from cv_bau_students.matcher.rank import rank_candidate
@@ -83,7 +84,8 @@ def analyze_candidate(
     # Phase 6 — rank ads via hard filter + 3-axis scoring.
     matches = rank_candidate(profile, translated)
 
-    # TODO Phase 7: reasoning
+    # Phase 7 — LLM #4 generates recruiter-facing rationale for top matches.
+    matches = reason_for_ranking(profile, translated, matches, top_n=5)
 
     final_missing = diagnose_missing(profile)
 
@@ -97,7 +99,7 @@ def analyze_candidate(
             "filename": filename,
             "elapsed_seconds": round(time.time() - started, 2),
             "raw_text_chars": len(raw_text),
-            "pipeline_phase": "6-matcher",
+            "pipeline_phase": "7-reasoning",
             "detector_llm_agrees": classification.llm_agrees,
             "detector_reasons": classification.reasons,
             "completion_rounds_run": len(completion_rounds),
