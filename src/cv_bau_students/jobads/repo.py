@@ -72,6 +72,45 @@ def list_ads() -> list[JobAd]:
         return [_to_pydantic(session, r) for r in rows]
 
 
+def find_candidate_ads(
+    *,
+    levels: list[str] | None = None,
+    domains: list[str] | None = None,
+    skill_ids_any: set[int] | None = None,
+    limit: int | None = None,
+) -> list[JobAd]:
+    """SQL pre-filter — narrows the ad set before the Python matcher runs.
+
+    Cuts the scoring set from "every ad in the DB" to "ads with at least
+    one of these levels AND one of these domains AND at least one
+    skill that overlaps the candidate's translated capabilities." Real
+    win at scale (thousands of ads): scoring 50 candidate ads instead
+    of 5000 means matcher cost drops 100×.
+
+    Single SQL round-trip with `EXISTS` for the skill-overlap check so
+    we don't fan-out per-row.
+    """
+    with get_session() as session:
+        stmt = select(JobAdRow)
+        if levels:
+            stmt = stmt.where(JobAdRow.level.in_(levels))
+        if domains:
+            stmt = stmt.where(JobAdRow.domain.in_(domains))
+        if skill_ids_any:
+            stmt = stmt.where(
+                select(JobAdSkill.id)
+                .where(
+                    JobAdSkill.ad_id == JobAdRow.id,
+                    JobAdSkill.skill_id.in_(skill_ids_any),
+                )
+                .exists()
+            )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        rows = session.execute(stmt).scalars().all()
+        return [_to_pydantic(session, r) for r in rows]
+
+
 def _to_pydantic(session: Session, row: JobAdRow) -> JobAd:
     skills_must = []
     skills_nice = []

@@ -130,6 +130,54 @@ def test_bridge_fit_is_minus_one_when_no_rubric_for_domain():
     assert score.total > 0
 
 
+def test_sql_pre_filter_narrows_ad_set_by_level_and_domain():
+    """`find_candidate_ads(...)` is the speed-win step: pre-filter ads
+    via SQL before any Python scoring runs."""
+    from cv_bau_students.jobads.repo import find_candidate_ads
+
+    _store_and_fetch_ad(_data_analyst_junior_ad())
+    _store_and_fetch_ad(
+        _data_analyst_junior_ad().model_copy(
+            update={
+                "title": "Senior Backend Developer",
+                "domain": "backend-developer",
+                "level": "senior",
+                "must_have": ["Python", "PostgreSQL"],
+            }
+        )
+    )
+    # Junior data-analyst ads only — should narrow to one.
+    narrowed = find_candidate_ads(levels=["junior"], domains=["data-analyst"])
+    assert len(narrowed) == 1
+    assert narrowed[0].title == "Junior Data Analyst"
+
+
+def test_sql_pre_filter_skill_overlap_works():
+    """When `skill_ids_any` is supplied, only ads whose skills overlap
+    the set come back. Uses the JobAdSkill EXISTS subquery so it's one
+    SQL round-trip."""
+    from cv_bau_students.jobads.repo import find_candidate_ads
+
+    _store_and_fetch_ad(_data_analyst_junior_ad())
+    _store_and_fetch_ad(
+        _data_analyst_junior_ad().model_copy(
+            update={
+                "title": "UX Designer",
+                "domain": "ux-designer",
+                "must_have": ["Figma"],
+                "nice_to_have": [],
+            }
+        )
+    )
+    python_id = resolve_skill("Python")[0]
+    figma_id = resolve_skill("Figma")[0]
+    only_python = find_candidate_ads(skill_ids_any={python_id})
+    only_figma = find_candidate_ads(skill_ids_any={figma_id})
+    assert "Junior Data Analyst" in {a.title for a in only_python}
+    assert "UX Designer" in {a.title for a in only_figma}
+    assert "Junior Data Analyst" not in {a.title for a in only_figma}
+
+
 def test_rank_candidate_returns_top_n_sorted_by_total():
     profile = _student_profile()
     _store_and_fetch_ad(_data_analyst_junior_ad())
