@@ -15,6 +15,7 @@ from cv_bau_students.detector.classify import classify
 from cv_bau_students.extractors import document
 from cv_bau_students.extractors.profile import extract_profile
 from cv_bau_students.models import CandidateAnalysis, CompletionRound
+from cv_bau_students.translator.translate import translate
 
 
 def analyze_candidate(
@@ -74,7 +75,10 @@ def analyze_candidate(
             break
         profile = fold_answers_into_profile(profile, round_obj)
 
-    # TODO Phase 4: capability translator
+    # LLM #3 — translate student / changer artefacts into experienced-
+    # language capabilities. Confidence floor + dedup happen inside.
+    translated = translate(profile)
+
     # TODO Phase 6: matcher
     # TODO Phase 7: reasoning
 
@@ -83,14 +87,16 @@ def analyze_candidate(
     return CandidateAnalysis(
         profile=profile,
         completion_rounds=completion_rounds,
+        translated_capabilities=translated,
         missing_fields=final_missing,
         processing_metadata={
             "filename": filename,
             "elapsed_seconds": round(time.time() - started, 2),
             "raw_text_chars": len(raw_text),
-            "pipeline_phase": "3-completion",
+            "pipeline_phase": "4-translator",
             "detector_llm_agrees": classification.llm_agrees,
             "detector_reasons": classification.reasons,
             "completion_rounds_run": len(completion_rounds),
+            "translated_capability_count": len(translated),
         },
     )
