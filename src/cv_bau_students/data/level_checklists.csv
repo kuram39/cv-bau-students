@@ -1,0 +1,44 @@
+domain,level,skill,bridgeable_in_months,notes
+data-analyst,junior,SQL,,must-have at hire
+data-analyst,junior,Excel,,must-have at hire
+data-analyst,junior,Data Analysis,,must-have at hire
+data-analyst,medior,Python,3,bridge via short course
+data-analyst,medior,pandas,2,bridge via short course
+data-analyst,medior,Power BI,2,bridge via certification
+data-analyst,senior,Stakeholder Management,,experience-only — no shortcut
+data-analyst,senior,Machine Learning,12,bridge via formal course + project
+frontend-developer,junior,HTML,,must-have at hire
+frontend-developer,junior,CSS,,must-have at hire
+frontend-developer,junior,JavaScript,,must-have at hire
+frontend-developer,medior,React,4,bridge via tutorial + portfolio project
+frontend-developer,medior,TypeScript,3,bridge via tutorial
+frontend-developer,senior,Stakeholder Management,,experience-only
+frontend-developer,senior,Project Management,,experience-only
+backend-developer,junior,Python,,must-have at hire
+backend-developer,junior,SQL,,must-have at hire
+backend-developer,junior,REST API,3,bridge via tutorial
+backend-developer,medior,Docker,3,bridge via tutorial
+backend-developer,medior,PostgreSQL,2,bridge via tutorial
+backend-developer,senior,Kubernetes,,experience-only
+backend-developer,senior,Stakeholder Management,,experience-only
+marketing-analyst,junior,Excel,,must-have at hire
+marketing-analyst,junior,Data Analysis,,must-have at hire
+marketing-analyst,medior,Power BI,3,bridge via certification
+marketing-analyst,medior,SQL,4,bridge via short course
+marketing-analyst,senior,Stakeholder Management,,experience-only
+ux-designer,junior,Figma,,must-have at hire
+ux-designer,junior,UX Research,3,bridge via short course
+ux-designer,medior,HTML,2,helpful for prototyping
+ux-designer,senior,Stakeholder Management,,experience-only
+project-manager,junior,Project Management,3,bridge via PRINCE2 / PMI foundation
+project-manager,medior,Stakeholder Management,,experience-only
+project-manager,senior,Stakeholder Management,,experience-only
+controller,junior,Excel,,must-have at hire
+controller,junior,Data Analysis,,must-have at hire
+controller,medior,Power BI,3,bridge via certification
+controller,medior,SQL,4,bridge via short course
+controller,senior,Stakeholder Management,,experience-only
+qa-engineer,junior,Python,3,bridge via tutorial
+qa-engineer,junior,REST API,3,bridge via tutorial
+qa-engineer,medior,Docker,3,bridge via tutorial
+qa-engineer,senior,Stakeholder Management,,experience-only

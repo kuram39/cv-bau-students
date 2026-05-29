@@ -1,0 +1,2 @@
+recursive-include src/cv_bau_students/prompts *.md
+recursive-include src/cv_bau_students/data *.csv

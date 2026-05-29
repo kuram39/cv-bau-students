@@ -1,0 +1,29 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.env
+.venv/
+venv/
+.DS_Store
+.streamlit/secrets.toml
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+
+# SQLite runtime database — schema is recreated from CSV seeds on startup
+src/cv_bau_students/data/cv_bau_students.sqlite
+src/cv_bau_students/data/cv_bau_students.sqlite-journal
+data/cv_bau_students.sqlite
+data/cv_bau_students.sqlite-journal
+
+# Owner's scraped job-ad source files (gitignored; the loader rewrites
+# them into the DB at startup so the committed normalised JSON is the
+# downstream artefact, not the raw scrape)
+data/raw_ads/scraped/
+
+# Fixture CVs containing PII — never commit
+data/fixtures/*.pdf
+data/fixtures/*.docx

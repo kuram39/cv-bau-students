@@ -1,0 +1,51 @@
+canonical_name,family,aliases,parent
+Python,programming-language,python|py,
+JavaScript,programming-language,javascript|js,
+TypeScript,programming-language,typescript|ts,JavaScript
+SQL,programming-language,sql,
+HTML,markup,html,
+CSS,markup,css,
+React,framework,react|reactjs|react.js,JavaScript
+Vue,framework,vue|vuejs|vue.js,JavaScript
+Next.js,framework,nextjs|next,React
+Django,framework,django,Python
+FastAPI,framework,fastapi,Python
+Flask,framework,flask,Python
+NumPy,library,numpy,Python
+pandas,library,pandas,Python
+PyTorch,library,pytorch,Python
+TensorFlow,library,tensorflow|tf,Python
+scikit-learn,library,sklearn|scikit-learn,Python
+Power BI,bi-tool,powerbi|power bi|pbi,
+Tableau,bi-tool,tableau,
+Looker,bi-tool,looker,
+Excel,office,excel|ms excel|microsoft excel,
+PostgreSQL,database,postgres|postgresql|psql,
+MySQL,database,mysql,
+MongoDB,database,mongo|mongodb,
+Snowflake,database,snowflake,
+BigQuery,database,bigquery|bq,
+Airflow,orchestration,airflow|apache airflow,
+dbt,orchestration,dbt,
+Git,vcs,git,
+GitHub,vcs,github,Git
+GitLab,vcs,gitlab,Git
+Docker,devops,docker,
+Kubernetes,devops,k8s|kubernetes,
+AWS,cloud,aws|amazon web services,
+Azure,cloud,azure|microsoft azure,
+GCP,cloud,gcp|google cloud,
+REST API,architecture,rest|rest api|restful,
+GraphQL,architecture,graphql,
+Figma,design,figma,
+UX Research,methodology,ux research|user research,
+Project Management,methodology,project management|pm,
+Stakeholder Management,methodology,stakeholder management,
+Data Analysis,methodology,data analysis|data analytics,
+Machine Learning,methodology,ml|machine learning,
+NLP,methodology,nlp|natural language processing,
+English C1,language,english c1|en c1,
+English B2,language,english b2|en b2,
+German B2,language,german b2|de b2|nemcina b2,
+Czech native,language,czech native|cestina rodily jazyk,
+Slovak native,language,slovak native|slovencina rodily jazyk,
