@@ -12,9 +12,14 @@ Return a single JSON object — no prose, no markdown fences. Schema:
 {
   "candidate_type": "student" | "career_changer" | "experienced",
   "language": "cs" | "en",
+  "name": "<full name as it appears in CV header>" | null,
+  "contact": "<email and/or phone, joined with ' / ' if both present>" | null,
+  "location": "<city / region from CV header, e.g. 'Praha' or 'Brno'>" | null,
   "summary": "<elevator pitch / professional summary verbatim from CV, max 600 chars>" | null,
   "target_domains": ["<role family the candidate clearly targets, e.g. 'data-analyst', 'frontend-developer'>", "..."],
   "explicit_skills": ["<skill names exactly as listed in the CV's skills section>", "..."],
+  "hard_skills": ["<measurable, course-learnable technologies / tools / certifications: e.g. 'Python', 'SQL', 'Power BI', 'AWS', 'CFA Level 1', 'Tableau'>", "..."],
+  "soft_skills": ["<interpersonal / personality traits: e.g. 'communication', 'team leadership', 'problem solving', 'presentation skills', 'conflict resolution', 'time management', 'mentoring'>", "..."],
   "languages": [
     {"language": "English", "min_level": "B2"},
     {"language": "Czech", "min_level": "C2"}
@@ -76,7 +81,10 @@ The summary / target-domain signal for career-changer must be explicit (e.g. the
 
 - **`summary`**: use the CV's own elevator pitch / "About me" / "Professional summary" section verbatim. If absent → `null`. Do NOT fabricate one.
 - **`target_domains`**: extract only when the candidate explicitly names target roles (in summary, cover letter, or career-objective section). Otherwise → `[]`. Use lowercase hyphenated forms when possible (`data-analyst`, `frontend-developer`, `marketing-analyst`).
-- **`explicit_skills`**: copy from the CV's dedicated skills section. Don't infer skills from work descriptions here — that's the next pipeline stage's job.
+- **`name` / `contact` / `location`**: pull from CV header. `contact` = email and/or phone joined with " / " (`alice@example.com / +420 777 123 456`). `location` = city or city + region (`Praha`, `Brno-střed`); strip street addresses. All three → `null` when the CV redacts them.
+- **`explicit_skills`**: copy from the CV's dedicated skills section verbatim. Don't infer skills from work descriptions here — that's the next pipeline stage's job. **Keep populating this for back-compat with the translator** even though `hard_skills` / `soft_skills` now exist.
+- **`hard_skills`**: subset of skills that are measurable / course-learnable: programming languages, frameworks, tools, databases, certifications, methodologies (Scrum, Kanban), software (Excel, Power BI), CAD/CAM, machine operation, foreign-language proficiencies that aren't already in `languages`. Take from CV's skills section + infer from work descriptions when explicitly named ("vyvinul jsem dashboard v Power BI" → "Power BI"). Min 3 items expected; if CV has fewer, leave list short — the completion loop will ask.
+- **`soft_skills`**: interpersonal + personality attributes the CV explicitly names or strongly implies through quoted achievements: "vedl jsem 5člený tým" → `team leadership`; "prezentoval výstupy klientovi" → `presentation skills`; "řešil eskalované stížnosti zákazníků" → `conflict resolution`. Don't fabricate from vague claims. Use English short phrases for consistency across CZ/EN CVs. Min 3 items expected.
 - **`languages`**: use CEFR levels (A1-C2). When the CV says "native" → C2. When only "passive" / "active" → null `min_level`.
 - **`education.in_progress`**: `true` when the CV shows "ongoing", "studuji", "currently", or `end_year` is in the future or absent without `end_year`.
 - **`work_experience.is_brigada`**: `true` when the role is part-time + clearly student-job (waiter, retail, call-centre) AND the candidate was studying at the time.

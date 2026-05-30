@@ -73,9 +73,21 @@ class CandidateProfile(BaseModel):
 
     candidate_type: CandidateType
     language: Literal["cs", "en"] = "en"
+    # BAU-mandatory identity fields (Phase 12). LLM extracts from CV
+    # header; completion loop asks if missing. Email / phone go into
+    # `contact` as a free-form string (no PII validation in MVP).
+    name: str | None = None
+    contact: str | None = None  # email / phone, free-form
+    location: str | None = None  # city / region, e.g. "Praha"
     summary: str | None = None  # elevator pitch
     target_domains: list[str] = Field(default_factory=list)
+    # Phase 12: hard vs soft separated. `explicit_skills` is the legacy
+    # combined list — kept for back-compat with the translator. New
+    # extractor populates both lists; legacy fallback fills
+    # `explicit_skills` with `hard_skills + soft_skills`.
     explicit_skills: list[str] = Field(default_factory=list)
+    hard_skills: list[str] = Field(default_factory=list)
+    soft_skills: list[str] = Field(default_factory=list)
     languages: list[LanguageRequirement] = Field(default_factory=list)
     education: list[EducationItem] = Field(default_factory=list)
     work_experience: list[WorkExperienceItem] = Field(default_factory=list)

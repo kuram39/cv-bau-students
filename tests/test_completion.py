@@ -9,7 +9,7 @@ type round-trips correctly.
 from unittest.mock import patch
 
 from cv_bau_students.completion.ask import ask, fold_answers_into_profile
-from cv_bau_students.completion.diagnose import diagnose_missing
+from cv_bau_students.completion.diagnose import diagnose_bau_mandatory, diagnose_missing
 from cv_bau_students.models import (
     CandidateProfile,
     CompletionQuestion,
@@ -215,3 +215,95 @@ def test_fold_answers_appends_skill_proof_as_project():
         p.title.startswith("Candidate-supplied example: Python")
         for p in new_profile.school_projects
     )
+
+
+# --- BAU-mandatory diagnose tests (Phase 12) ----------------------------------
+
+
+def _bau_complete_profile() -> CandidateProfile:
+    """Minimum profile that passes diagnose_bau_mandatory."""
+    return CandidateProfile(
+        candidate_type="student",
+        language="cs",
+        name="Anna Nováková",
+        location="Praha",
+        education=[
+            EducationItem(
+                institution="VŠE",
+                field_of_study="IT for management",
+                degree="Bachelor",
+                in_progress=True,
+            )
+        ],
+        work_experience=[
+            WorkExperienceItem(employer="McDonald's", role="Obsluha", is_brigada=True)
+        ],
+        hard_skills=["Python", "SQL", "Excel"],
+        soft_skills=["team work", "communication", "time management"],
+        languages=[LanguageRequirement(language="English", min_level="B2")],
+    )
+
+
+def test_bau_complete_profile_passes():
+    assert diagnose_bau_mandatory(_bau_complete_profile()) == []
+
+
+def test_bau_flags_missing_name():
+    profile = _bau_complete_profile().model_copy(update={"name": None})
+    assert "name" in diagnose_bau_mandatory(profile)
+
+
+def test_bau_flags_missing_location():
+    profile = _bau_complete_profile().model_copy(update={"location": ""})
+    assert "location" in diagnose_bau_mandatory(profile)
+
+
+def test_bau_flags_missing_education():
+    profile = _bau_complete_profile().model_copy(update={"education": []})
+    assert "education" in diagnose_bau_mandatory(profile)
+
+
+def test_bau_flags_no_work_and_no_projects():
+    profile = _bau_complete_profile().model_copy(
+        update={"work_experience": [], "school_projects": []}
+    )
+    assert "work_or_project" in diagnose_bau_mandatory(profile)
+
+
+def test_bau_passes_when_only_projects_no_work():
+    """Student with school projects but no paid work history is OK."""
+    profile = _bau_complete_profile().model_copy(
+        update={
+            "work_experience": [],
+            "school_projects": [SchoolProjectItem(title="Capstone")],
+        }
+    )
+    assert "work_or_project" not in diagnose_bau_mandatory(profile)
+
+
+def test_bau_flags_too_few_hard_skills():
+    profile = _bau_complete_profile().model_copy(
+        update={"hard_skills": ["Python"], "explicit_skills": []}
+    )
+    missing = diagnose_bau_mandatory(profile)
+    assert any(f.startswith("hard_skills::") for f in missing)
+
+
+def test_bau_legacy_explicit_skills_count_toward_hard_minimum():
+    """Old-format CVs that only have explicit_skills still pass."""
+    profile = _bau_complete_profile().model_copy(
+        update={"hard_skills": [], "explicit_skills": ["Python", "SQL", "Excel"]}
+    )
+    missing = diagnose_bau_mandatory(profile)
+    assert not any(f.startswith("hard_skills::") for f in missing)
+
+
+def test_bau_flags_too_few_soft_skills():
+    profile = _bau_complete_profile().model_copy(update={"soft_skills": ["communication"]})
+    missing = diagnose_bau_mandatory(profile)
+    assert any(f.startswith("soft_skills::") for f in missing)
+
+
+def test_bau_flags_no_languages():
+    profile = _bau_complete_profile().model_copy(update={"languages": []})
+    assert "languages" in diagnose_bau_mandatory(profile)

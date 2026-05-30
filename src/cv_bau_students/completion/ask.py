@@ -59,6 +59,20 @@ def fold_answers_into_profile(
 
         if field == "summary":
             updates["summary"] = answer
+        elif field == "name":
+            updates["name"] = answer.strip()
+        elif field == "location":
+            updates["location"] = answer.strip()
+        elif field == "contact":
+            updates["contact"] = answer.strip()
+        elif field.startswith("hard_skills"):
+            # Append comma-separated answers to both hard + legacy lists.
+            added = [s.strip() for s in answer.split(",") if s.strip()]
+            updates["hard_skills"] = list({*profile.hard_skills, *added})
+            updates["explicit_skills"] = list({*profile.explicit_skills, *added})
+        elif field.startswith("soft_skills"):
+            added = [s.strip() for s in answer.split(",") if s.strip()]
+            updates["soft_skills"] = list({*profile.soft_skills, *added})
         elif field == "target_domains":
             updates["target_domains"] = [
                 d.strip().lower().replace(" ", "-") for d in answer.split(",") if d.strip()
