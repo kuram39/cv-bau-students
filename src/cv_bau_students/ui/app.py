@@ -204,3 +204,12 @@ with right:
 
 with st.expander("🔧 Raw analysis JSON"):
     st.json(analysis.model_dump())
+
+
+# --- ESCO attribution footer (CC BY 4.0 requirement) ---------------------
+st.markdown(
+    "---\n"
+    "*This service uses the ESCO classification of the European Commission.* "
+    "ESCO v1.2.x · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) · "
+    "Czech NSP/CDK (CC0, [data.mpsv.cz](https://data.mpsv.cz))."
+)

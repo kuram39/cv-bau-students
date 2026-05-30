@@ -19,7 +19,7 @@ where = ["src"]
 include = ["cv_bau_students*"]
 
 [tool.setuptools.package-data]
-cv_bau_students = ["prompts/*.md", "data/*.csv"]
+cv_bau_students = ["prompts/*.md", "data/*.csv", "data/*.sqlite.gz"]
 
 [tool.black]
 line-length = 100

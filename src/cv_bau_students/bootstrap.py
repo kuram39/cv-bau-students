@@ -1,9 +1,21 @@
 """Boot-time bootstrap helpers.
 
 Streamlit Cloud spawns a fresh container per deploy — the SQLite DB
-ships empty. These helpers detect an empty taxonomy and seed it from
-the committed CSVs + scraped ad JSON. Idempotent: re-running is a
-single `SELECT COUNT(*)` query when state already exists.
+ships empty. These helpers detect an empty taxonomy and seed it from:
+
+  1. **`seed.sqlite.gz`** (preferred) — the ESCO + NSP snapshot built
+     by `scripts/build_cloud_seed.py` and shipped via package-data.
+     Gunzipped + copied to the runtime DB path in ~2 s.
+  2. **CSV fallback** — when the seed is missing (dev with no build,
+     legacy deploy), the slow CSV path takes over.
+
+After taxonomy is in place we run the manual seed loader to overlay
+the hand-edited `level_checklists.csv` and `taxonomy_seed.csv`. Those
+are deliberately kept hand-editable for the bridge-plan rubric — the
+seed snapshot doesn't own them.
+
+Idempotent: re-running is a single `SELECT COUNT(*)` query when state
+already exists.
 
 Also exports `prewarm_llm()` so the first user analysis doesn't pay
 the 60-second Anthropic SDK cold-import penalty.
@@ -11,16 +23,24 @@ the 60-second Anthropic SDK cold-import penalty.
 
 from __future__ import annotations
 
+import gzip
 import logging
+import shutil
 import threading
+from pathlib import Path
 
 from sqlalchemy import select
 
 from cv_bau_students.config import LEVEL_CHECKLISTS_CSV, SCRAPED_ADS_DIR, TAXONOMY_SEED_CSV
-from cv_bau_students.db import get_session, init_db
+from cv_bau_students.db import _engine, get_session, init_db
 from cv_bau_students.db_models import JobAdRow, Skill
 
 log = logging.getLogger(__name__)
+
+# Where the gzipped Cloud seed lives inside the package. MANIFEST.in
+# ships it via setuptools package-data.
+_PACKAGE_ROOT = Path(__file__).resolve().parent
+SEED_SQLITE_GZ = _PACKAGE_ROOT / "data" / "seed.sqlite.gz"
 
 
 def is_seeded() -> bool:
@@ -31,18 +51,85 @@ def is_seeded() -> bool:
     return has_skills and has_ads
 
 
-def ensure_seeded() -> None:
-    """Run load_seeds + normalise_scraped_ads if the DB is empty.
+def _restore_from_seed_snapshot() -> bool:
+    """If seed.sqlite.gz is present, gunzip it to the runtime DB path.
 
-    Catches errors so a bootstrap failure surfaces in logs but does not
-    crash the Streamlit app — the recruiter sees the "no ads" empty
+    Only fires when the runtime DB doesn't already exist or is empty.
+    Returns True if the seed was restored, False otherwise.
+    """
+    if not SEED_SQLITE_GZ.exists():
+        log.info("No seed.sqlite.gz at %s — falling back to CSV path.", SEED_SQLITE_GZ)
+        return False
+
+    # Get the runtime SQLite file path from the engine URL.
+    engine = _engine()
+    url = str(engine.url)
+    if "sqlite" not in url:
+        log.info("DB is not SQLite (%s) — skipping seed restore.", url)
+        return False
+    # Strip sqlite:/// prefix; engine.url.database is the cleaner accessor.
+    runtime_db = engine.url.database
+    if runtime_db is None or runtime_db == ":memory:":
+        log.info("Runtime DB is in-memory — skipping seed restore.")
+        return False
+    runtime_path = Path(runtime_db).resolve()
+
+    # If runtime DB exists and is non-trivial, don't overwrite.
+    if runtime_path.exists() and runtime_path.stat().st_size > 64 * 1024:
+        return False
+
+    runtime_path.parent.mkdir(parents=True, exist_ok=True)
+    log.info("Restoring seed snapshot: %s → %s", SEED_SQLITE_GZ, runtime_path)
+    # Drop the existing engine so SQLAlchemy releases the file handle.
+    engine.dispose()
+    with gzip.open(SEED_SQLITE_GZ, "rb") as fin, runtime_path.open("wb") as fout:
+        shutil.copyfileobj(fin, fout)
+    # Force a new engine on next get_session() call.
+    _engine.cache_clear()
+    return True
+
+
+def ensure_seeded() -> None:
+    """Restore from seed snapshot if available, then overlay hand-edited bits.
+
+    Catches errors per-step so a single failure surfaces in logs but
+    does not crash the Streamlit app — the recruiter sees an empty
     state instead of a stack trace.
     """
+    # Step 0: try fast Cloud seed restore BEFORE init_db, so we don't
+    # accidentally CREATE TABLE into an empty file that we then overwrite.
+    seed_restored = False
+    try:
+        seed_restored = _restore_from_seed_snapshot()
+    except Exception:  # noqa: BLE001
+        log.exception("Bootstrap: seed snapshot restore failed.")
+
     init_db()
+    if seed_restored:
+        # Snapshot already includes manual seed + ESCO + hierarchy +
+        # industry map + NSP + checklists. We deliberately do NOT
+        # re-run the manual overlay here — `_truncate_taxonomy()` in
+        # load_seeds would wipe the 14k ESCO rows. Bridge-plan rubric
+        # edits require rebuilding the seed (rare, intentional).
+        _overlay_job_ads()
+        return
+
     if is_seeded():
         return
-    log.info("Empty DB detected — running bootstrap seed.")
 
+    log.info("Empty DB detected, no seed snapshot — running CSV bootstrap.")
+    _overlay_manual_seed()
+    _overlay_legacy_esco_csv()
+    _overlay_job_ads()
+    _overlay_nsp()
+
+
+def _overlay_manual_seed() -> None:
+    """Re-load the hand-edited taxonomy + checklist CSVs over the snapshot.
+
+    These rows are owned by humans (the bridge-plan rubric) and must
+    stay editable without rebuilding the seed.
+    """
     try:
         from scripts.load_seeds import _load_checklists, _load_taxonomy, _truncate_taxonomy
 
@@ -50,16 +137,14 @@ def ensure_seeded() -> None:
             _truncate_taxonomy(session)
             canonical_to_id = _load_taxonomy(session, TAXONOMY_SEED_CSV)
             _load_checklists(session, LEVEL_CHECKLISTS_CSV, canonical_to_id)
-        log.info("Taxonomy + checklists loaded.")
-    except Exception:  # noqa: BLE001 — log + continue so partial state still beats crash
-        log.exception("Bootstrap: taxonomy seed failed.")
+        log.info("Manual taxonomy + checklists overlaid.")
+    except Exception:  # noqa: BLE001
+        log.exception("Bootstrap: manual seed overlay failed.")
 
-    # ESCO subset committed to git as CSV — loads in seconds vs ~30 min
-    # API fetch. Optional: when missing, the manual seed above is the
-    # only taxonomy source and the app still works (with lower recall).
+
+def _overlay_legacy_esco_csv() -> None:
+    """Slow fallback when seed.sqlite.gz is missing — reads exported CSVs."""
     try:
-        from pathlib import Path
-
         esco_skills_csv = Path("src/cv_bau_students/data/esco_skills.csv")
         esco_aliases_csv = Path("src/cv_bau_students/data/esco_aliases.csv")
         if esco_skills_csv.exists():
@@ -68,11 +153,15 @@ def ensure_seeded() -> None:
             aliases_path = esco_aliases_csv if esco_aliases_csv.exists() else None
             counts = load_csv_subset(esco_skills_csv, aliases_path)
             log.info(
-                "ESCO subset loaded: %d skills, %d aliases.", counts["skills"], counts["aliases"]
+                "ESCO CSV fallback loaded: %d skills, %d aliases.",
+                counts["skills"],
+                counts["aliases"],
             )
     except Exception:  # noqa: BLE001
-        log.exception("Bootstrap: ESCO CSV subset load failed.")
+        log.exception("Bootstrap: ESCO CSV fallback failed.")
 
+
+def _overlay_job_ads() -> None:
     try:
         if SCRAPED_ADS_DIR.exists() and any(SCRAPED_ADS_DIR.glob("*.json")):
             from scripts.normalise_scraped_ads import _truncate_job_ads
@@ -84,12 +173,13 @@ def ensure_seeded() -> None:
     except Exception:  # noqa: BLE001
         log.exception("Bootstrap: job-ad ingest failed.")
 
-    # NSP Czech competency overlay — fast (~5-100 rows from local JSON).
-    # ESCO full-load (14k+ rows) stays a manual CLI step — too long for
-    # boot. Run `python -m scripts.load_esco` once after deploy.
-    try:
-        from pathlib import Path
 
+def _overlay_nsp() -> None:
+    """NSP overlay only fires on the slow-path (no seed snapshot).
+
+    When seed.sqlite.gz is present, NSP rows are already inside it.
+    """
+    try:
         nsp_seed = Path("data/raw_nsp/competencies_seed.json")
         if nsp_seed.exists():
             from scripts.load_nsp import _load_local, _persist_competency

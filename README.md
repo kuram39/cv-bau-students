@@ -216,9 +216,24 @@ SQLAlchemy abstracts the dialect.
 ## Tests
 
 ```bash
-pytest -q   # 61 tests, no network — LLM + HTTP calls patched per test
+pytest -q   # 74 tests, no network — LLM + HTTP calls patched per test
 ```
+
+## Data Sources & Attribution
+
+This service uses the ESCO classification of the European Commission.
+ESCO v1.2.x · Released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Source: <https://esco.ec.europa.eu>.
+
+Czech NSP (Národní soustava povolání) / CDK competency data: CC0,
+[data.mpsv.cz](https://data.mpsv.cz). Used for Czech-native phrasings
+and CZ-ISCO mapping.
+
+The bundled `seed.sqlite.gz` is a snapshot of the live ingest of those
+two datasets. See [NOTICES.md](NOTICES.md) for full third-party data
+notices.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Code: MIT — see [LICENSE](LICENSE).
+Bundled data: see [NOTICES.md](NOTICES.md) for per-dataset licenses.
