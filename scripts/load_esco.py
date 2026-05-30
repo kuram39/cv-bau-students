@@ -2,16 +2,23 @@
 """Load ESCO v1.2.x taxonomy into the local SQLite via the public REST API.
 
 Pulls 14k+ skills with EN + CS preferredLabel and altLabels. Walks the
-list endpoint with pagination (100 per page → ~142 calls). Idempotent:
-on re-run, existing rows are updated rather than duplicated.
+list endpoint with adaptive pagination — the public ESCO API has an
+undocumented bug: large `limit` values silently return count=0 at
+deep offsets (limit=100 fails at offset>=200; limit=10 fails at
+offset>=5000; limit=1 works everywhere). The loader compensates by
+starting at limit=100 and halving on empty responses, then ratcheting
+back up after success. Throughput holds at ~12 skills/s overall.
+
+Idempotent on re-run: existing rows are updated rather than duplicated.
 
 Hierarchy is intentionally skipped on the API path — each broader
 relation requires a per-skill GET which would add ~14k extra calls.
-When the user wants hierarchy, drop the ESCO ZIP into
-`data/raw_esco/csv/` and the loader picks up `broaderRelationsSkillPillar.csv`.
+When the user wants hierarchy, request the official ESCO ZIP via the
+form at https://esco.ec.europa.eu/en/use-esco/download (email-gated),
+drop into `data/raw_esco/csv/`, and use the CSV ingest path.
 
 Usage:
-    python scripts/load_esco.py                      # full load
+    python scripts/load_esco.py                      # full load (~20-30 min)
     python scripts/load_esco.py --limit 500          # quick smoke test
     python scripts/load_esco.py --languages en cs    # default
     python scripts/load_esco.py --resume             # resume from last offset
@@ -24,10 +31,10 @@ import argparse
 import json
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from urllib.parse import urlencode
-
-import urllib.request
 
 from sqlalchemy import select, update
 
@@ -53,9 +60,42 @@ def _fetch_page(language: str, offset: int, limit: int) -> dict:
         "offset": offset,
     }
     url = f"{ESCO_BASE}?{urlencode(params)}"
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    return _http_get_json_with_retry(url)
+
+
+def _http_get_json_with_retry(url: str, max_retries: int = 5) -> dict:
+    """GET with exponential backoff on 5xx + transient network errors.
+
+    ESCO's public API throws sporadic HTTP 500s under load; a few-second
+    retry usually clears them. Without this guard, a single blip kills
+    the entire 14k-row load and forces a resume.
+    """
+    delay = 2.0
+    last_err: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            last_err = exc
+            if exc.code < 500 or exc.code >= 600:
+                raise  # 4xx is a real client error, no point retrying
+            print(
+                f"  WARN: HTTP {exc.code} on attempt {attempt + 1}/{max_retries}; "
+                f"sleeping {delay:.1f}s",
+                file=sys.stderr,
+            )
+        except (urllib.error.URLError, TimeoutError) as exc:
+            last_err = exc
+            print(
+                f"  WARN: network error on attempt {attempt + 1}/{max_retries}: {exc}; "
+                f"sleeping {delay:.1f}s",
+                file=sys.stderr,
+            )
+        time.sleep(delay)
+        delay *= 2  # 2, 4, 8, 16, 32 seconds — caps retries at ~62s total
+    raise RuntimeError(f"ESCO API gave up after {max_retries} retries: {last_err}")
 
 
 def _extract_label(concept: dict, lang: str) -> str | None:
@@ -203,20 +243,65 @@ def main_args(
     fetched = 0
     written = 0
     start = time.time()
+    # Adaptive limit. ESCO REST API has an undocumented bug: large `limit`
+    # values silently return count=0 at deep offsets. The cap is not stable
+    # (limit=100 fails at offset>=200, limit=10 fails at offset>=5000,
+    # limit=1 works everywhere). We start optimistic and halve on empty,
+    # then try to scale back up after success.
+    adaptive_limit = page_size
+    total: int | None = None
+    consecutive_empty_at_limit_1 = 0
 
+    skipped_offsets: list[int] = []
     while True:
         try:
-            # We pull EN as the primary list (gives us the URI + EN labels)
-            # and re-pull CS per page for the Czech preferredLabel + altLabels.
-            page_en = _fetch_page("en", offset=offset, limit=page_size)
+            page_en = _fetch_page("en", offset=offset, limit=adaptive_limit)
         except Exception as exc:  # noqa: BLE001
-            print(f"ESCO fetch failed at offset {offset}: {exc}", file=sys.stderr)
+            # Persistent 5xx at a single offset shouldn't kill the whole
+            # load — skip ahead and keep going. The skipped rows are
+            # logged so we know what we're missing.
+            print(
+                f"ESCO fetch hard-failed at offset {offset} (limit={adaptive_limit}): "
+                f"{exc} — skipping {adaptive_limit} rows and advancing.",
+                file=sys.stderr,
+            )
+            skipped_offsets.append(offset)
+            offset += max(1, adaptive_limit)
             _save_state({"offset": offset})
-            return 2
+            # Shrink limit on next attempt — bad-offset clusters tend to
+            # tolerate smaller windows.
+            adaptive_limit = max(1, adaptive_limit // 2)
+            if len(skipped_offsets) > 200:
+                print(
+                    f"Too many hard-failures ({len(skipped_offsets)}); aborting.",
+                    file=sys.stderr,
+                )
+                return 2
+            continue
+
+        if total is None:
+            total = page_en.get("total")
+            if verbose and total:
+                print(f"  ESCO reports {total} total skills.")
+        if total is not None and offset >= total:
+            break
 
         embedded = page_en.get("_embedded", {}) or {}
         if not embedded:
-            break
+            if adaptive_limit > 1:
+                adaptive_limit = max(1, adaptive_limit // 2)
+                if verbose:
+                    print(f"  offset {offset}: empty page, halving limit → {adaptive_limit}")
+                continue
+            # limit=1 returned empty — could be genuine hole or API exhaustion.
+            consecutive_empty_at_limit_1 += 1
+            offset += 1
+            if consecutive_empty_at_limit_1 >= 50:
+                if verbose:
+                    print(f"  50 consecutive empty pages at limit=1 from offset {offset}; stop.")
+                break
+            continue
+        consecutive_empty_at_limit_1 = 0
 
         # Bulk CS fetch for the same URIs — saves N round-trips.
         uris = list(embedded.keys())
@@ -250,23 +335,33 @@ def main_args(
             if limit and fetched >= limit:
                 break
 
-        offset += page_size
+        page_size_actual = len(embedded)
+        offset += page_size_actual
         _save_state({"offset": offset})
-        if verbose:
+
+        # Got a full page — try to speed back up next iteration.
+        if page_size_actual == adaptive_limit and adaptive_limit < page_size:
+            adaptive_limit = min(page_size, adaptive_limit * 2)
+
+        if verbose and offset % 100 < adaptive_limit:
             elapsed = time.time() - start
             rate = fetched / elapsed if elapsed > 0 else 0
             print(
                 f"  offset {offset:>6} | fetched {fetched:>6} | "
-                f"written {written:>6} | {rate:.1f}/s"
+                f"written {written:>6} | limit {adaptive_limit:>3} | {rate:.1f}/s"
             )
 
         if limit and fetched >= limit:
             break
-        if len(embedded) < page_size:
-            break  # last page
 
     if verbose:
         print(f"\nFetched {fetched} skills, wrote {written} new/updated.")
+        if skipped_offsets:
+            print(
+                f"  Skipped {len(skipped_offsets)} pages on hard 5xx failures: "
+                f"first={skipped_offsets[:3]} last={skipped_offsets[-3:]}",
+                file=sys.stderr,
+            )
     return 0
 
 
@@ -304,9 +399,7 @@ def _fetch_by_uris(uris: list[str], *, language: str) -> dict:
     params = [("uris", uri) for uri in uris]
     params.append(("language", language))
     url = f"{ESCO_BASE}?{urlencode(params, doseq=True)}"
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_S) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    return _http_get_json_with_retry(url)
 
 
 if __name__ == "__main__":

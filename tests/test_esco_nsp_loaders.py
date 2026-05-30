@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+from scripts import load_esco, load_nsp
+
 from cv_bau_students.db import get_session
 from cv_bau_students.db_models import Skill, SkillAlias
 from cv_bau_students.taxonomy.repo import resolve_skill
-from scripts import load_esco, load_nsp
 
 # Minimal ESCO API page shape — matches what /resource/skill returns.
 _FAKE_EN_PAGE = {

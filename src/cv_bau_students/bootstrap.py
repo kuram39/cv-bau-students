@@ -54,6 +54,25 @@ def ensure_seeded() -> None:
     except Exception:  # noqa: BLE001 — log + continue so partial state still beats crash
         log.exception("Bootstrap: taxonomy seed failed.")
 
+    # ESCO subset committed to git as CSV — loads in seconds vs ~30 min
+    # API fetch. Optional: when missing, the manual seed above is the
+    # only taxonomy source and the app still works (with lower recall).
+    try:
+        from pathlib import Path
+
+        esco_skills_csv = Path("src/cv_bau_students/data/esco_skills.csv")
+        esco_aliases_csv = Path("src/cv_bau_students/data/esco_aliases.csv")
+        if esco_skills_csv.exists():
+            from scripts.load_esco_csv import load_csv_subset
+
+            aliases_path = esco_aliases_csv if esco_aliases_csv.exists() else None
+            counts = load_csv_subset(esco_skills_csv, aliases_path)
+            log.info(
+                "ESCO subset loaded: %d skills, %d aliases.", counts["skills"], counts["aliases"]
+            )
+    except Exception:  # noqa: BLE001
+        log.exception("Bootstrap: ESCO CSV subset load failed.")
+
     try:
         if SCRAPED_ADS_DIR.exists() and any(SCRAPED_ADS_DIR.glob("*.json")):
             from scripts.normalise_scraped_ads import _truncate_job_ads
