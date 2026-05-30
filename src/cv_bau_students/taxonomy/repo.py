@@ -16,29 +16,40 @@ from cv_bau_students.db_models import Skill, SkillAlias, SkillHierarchy
 def resolve_skill(name: str) -> tuple[int, str] | None:
     """Map a raw skill string to (canonical_id, canonical_name).
 
-    Tries an exact canonical-name match first, then falls back to the
-    `skill_aliases` table. Lowercase + strip for resolution; returns
-    None when no match is found.
+    Resolution order:
+    1. Exact canonical_name (CS or EN) — `ilike` for case-insensitivity.
+    2. Alias in any language / source (lowercase match).
+
+    Returns None when no match. Aliases are deduplicated by (alias, lang,
+    source) at the DB level so the first match is canonical.
     """
     if not name:
         return None
-    lowered = name.strip().lower()
+    stripped = name.strip()
+    lowered = stripped.lower()
     with get_session() as session:
+        # Exact CS or EN canonical match.
         skill = (
-            session.execute(select(Skill).where(Skill.canonical_name.ilike(name.strip())))
+            session.execute(
+                select(Skill).where(
+                    (Skill.canonical_name.ilike(stripped))
+                    | (Skill.canonical_name_en.ilike(stripped))
+                )
+            )
             .scalars()
             .first()
         )
         if skill is not None:
             return skill.id, skill.canonical_name
-        alias = session.execute(
+        # Alias lookup — case-insensitive via lower(alias).
+        alias_row = session.execute(
             select(SkillAlias, Skill)
             .join(Skill, Skill.id == SkillAlias.canonical_id)
-            .where(SkillAlias.alias == lowered)
+            .where(SkillAlias.alias.ilike(lowered))
         ).first()
-        if alias is None:
+        if alias_row is None:
             return None
-        _, skill = alias
+        _, skill = alias_row
         return skill.id, skill.canonical_name
 
 

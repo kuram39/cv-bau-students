@@ -1,0 +1,37 @@
+[
+  {
+    "kod": "k-it-001",
+    "nazev": "Programování v jazyce Python",
+    "synonyma": ["vývoj v Pythonu", "skriptování v Pythonu"],
+    "typ": "odborná dovednost",
+    "cz_isco": ["25120"]
+  },
+  {
+    "kod": "k-it-002",
+    "nazev": "SQL dotazy",
+    "synonyma": ["psaní SQL", "práce s relační databází"],
+    "typ": "odborná dovednost",
+    "cz_isco": ["25210"]
+  },
+  {
+    "kod": "k-soft-001",
+    "nazev": "Týmová spolupráce",
+    "synonyma": ["práce v týmu", "spolupráce s kolegy"],
+    "typ": "měkká dovednost",
+    "cz_isco": []
+  },
+  {
+    "kod": "k-soft-002",
+    "nazev": "Komunikační dovednosti",
+    "synonyma": ["komunikace se zákazníkem", "písemná komunikace"],
+    "typ": "měkká dovednost",
+    "cz_isco": []
+  },
+  {
+    "kod": "k-lang-001",
+    "nazev": "Anglický jazyk",
+    "synonyma": ["angličtina", "English B2"],
+    "typ": "jazyková kompetence",
+    "cz_isco": []
+  }
+]

@@ -63,7 +63,14 @@ def _load_taxonomy(session, csv_path: Path) -> dict[str, int]:
                 for raw_alias in aliases_field.split("|"):
                     alias = raw_alias.strip().lower()
                     if alias:
-                        session.add(SkillAlias(alias=alias, canonical_id=canonical_id))
+                        session.add(
+                            SkillAlias(
+                                alias=alias,
+                                canonical_id=canonical_id,
+                                lang="en",
+                                source="manual",
+                            )
+                        )
             parent = row.get("parent", "").strip()
             if parent:
                 parent_id = canonical_to_id.get(parent)

@@ -160,6 +160,43 @@ CSV seeds live at `src/cv_bau_students/data/`:
 - `level_checklists.csv` — 8 demo domains × {junior, medior, senior}
   × skill, with `bridgeable_in_months` per row.
 
+### Skill taxonomy: ESCO primary + NSP overlay
+
+The 50-row manual seed boots the prototype, but production scale needs
+external authorities. Phase 11 wires two:
+
+1. **ESCO v1.2.x** (European Skills, Competences, Qualifications and
+   Occupations) — 14 158 skills with Czech + English preferred labels
+   and ISCO-08 mapping. CC BY 4.0. Loaded via the public REST API:
+
+   ```bash
+   python -m scripts.load_esco               # ~18 min full load
+   python -m scripts.load_esco --limit 500   # smoke
+   python -m scripts.load_esco --resume      # restart from offset
+   ```
+
+   Each ESCO concept becomes one `Skill` row (CS preferredLabel as
+   canonical, EN as `canonical_name_en`, ESCO URI for provenance) plus
+   N `SkillAlias` rows tagged `source="esco"` (CS + EN altLabels).
+
+2. **Czech NSP / CDK** (Národní soustava povolání) — Czech-native
+   competency phrasings + CZ-ISCO occupation codes. CC0 via
+   data.mpsv.cz. Loaded on top of ESCO:
+
+   ```bash
+   python -m scripts.load_nsp --source data/raw_nsp/competencies.json
+   ```
+
+   If an NSP competency name matches an existing ESCO row, the NSP
+   code is stitched onto it (no duplicate); otherwise the NSP
+   competency joins as a stand-alone skill. Aliases tagged
+   `source="nsp"`.
+
+The manual seed survives both passes — `resolve_skill()` walks
+canonical → alias across all three sources via case-insensitive ilike.
+Boot-time auto-load runs the manual seed + NSP overlay (fast); the
+full ESCO sweep stays a one-time CLI step deferred to deploy.
+
 Production migration to Postgres = change `CV_BAU_STUDENTS_DB_URL`.
 SQLAlchemy abstracts the dialect.
 
@@ -179,7 +216,7 @@ SQLAlchemy abstracts the dialect.
 ## Tests
 
 ```bash
-pytest -q   # 54 tests, no network — LLM calls patched per test
+pytest -q   # 61 tests, no network — LLM + HTTP calls patched per test
 ```
 
 ## License

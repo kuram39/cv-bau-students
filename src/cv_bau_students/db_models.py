@@ -82,12 +82,24 @@ class Skill(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     canonical_name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     family: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # ESCO enrichment (Phase 11)
+    canonical_name_en: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    esco_uri: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    skill_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Czech NSP code (CZ-ISCO + competence linkage)
+    nsp_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
 class SkillAlias(Base):
     __tablename__ = "skill_aliases"
-    alias: Mapped[str] = mapped_column(String(255), primary_key=True)
+    # Composite PK: same alias can exist in multiple langs / sources
+    id: Mapped[int] = mapped_column(primary_key=True)
+    alias: Mapped[str] = mapped_column(String(255), index=True)
     canonical_id: Mapped[int] = mapped_column(ForeignKey("skills.id"), index=True)
+    lang: Mapped[str] = mapped_column(String(8), default="en", index=True)
+    source: Mapped[str] = mapped_column(String(16), default="manual")
+
+    __table_args__ = (UniqueConstraint("alias", "lang", "source", name="uq_alias_lang_source"),)
 
 
 class SkillHierarchy(Base):

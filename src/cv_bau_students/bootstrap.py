@@ -65,6 +65,22 @@ def ensure_seeded() -> None:
     except Exception:  # noqa: BLE001
         log.exception("Bootstrap: job-ad ingest failed.")
 
+    # NSP Czech competency overlay — fast (~5-100 rows from local JSON).
+    # ESCO full-load (14k+ rows) stays a manual CLI step — too long for
+    # boot. Run `python -m scripts.load_esco` once after deploy.
+    try:
+        from pathlib import Path
+
+        nsp_seed = Path("data/raw_nsp/competencies_seed.json")
+        if nsp_seed.exists():
+            from scripts.load_nsp import _load_local, _persist_competency
+
+            for comp in _load_local(nsp_seed):
+                _persist_competency(comp)
+            log.info("NSP competencies loaded from %s.", nsp_seed)
+    except Exception:  # noqa: BLE001
+        log.exception("Bootstrap: NSP overlay failed.")
+
 
 def prewarm_llm() -> None:
     """Fire a background thread that imports the Anthropic SDK + builds

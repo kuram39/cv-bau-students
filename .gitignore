@@ -27,3 +27,8 @@ data/raw_ads/scraped/
 # Fixture CVs containing PII — never commit
 data/fixtures/*.pdf
 data/fixtures/*.docx
+
+# ESCO loader resume state — runtime artifact
+.esco_load_state.json
+# Optional raw ESCO ZIP dump if user downloads it later
+data/raw_esco/
