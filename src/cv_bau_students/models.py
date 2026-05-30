@@ -183,3 +183,68 @@ class CandidateAnalysis(BaseModel):
     matches: list[MatchScore] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list)
     processing_metadata: dict = Field(default_factory=dict)
+
+
+# --- Phase 12: two-pass candidate journey result models ---------------------
+
+
+class RoleSpecificQuestionPydantic(BaseModel):
+    """In-memory representation of a `RoleSpecificQuestion` ORM row."""
+
+    slot: str
+    question_text: str
+    extract_hint: str | None = None
+
+
+class PrefilledQuestion(BaseModel):
+    """A role-specific question paired with the system's pre-fill suggestion.
+
+    Returned from `express_interest('interested')` so the UI can render
+    text-areas pre-populated with text the LLM extracted from the CV.
+    User accepts or edits before submitting.
+    """
+
+    slot: str
+    question_text: str
+    extract_hint: str | None = None
+    prefilled_answer: str | None = None  # None when LLM said `missing`
+    prefilled_confidence: float = 0.0  # 0.0 when nothing was extracted
+
+
+class GenericResult(BaseModel):
+    """Output of Stage 1 (`run_generic_pass`).
+
+    Status determines next step in the UI flow:
+      - `needs_completion` → render BAU completion form
+      - `matched` → render top-N match preview cards with interest buttons
+    """
+
+    status: Literal["needs_completion", "matched", "no_matches"]
+    profile: CandidateProfile
+    candidate_id: int | None = None
+    completion_round: CompletionRound | None = None
+    matches: list[MatchScore] = Field(default_factory=list)
+    matched_ads: list[JobAd] = Field(default_factory=list)
+    ko_eliminated: int = 0  # how many ads were dropped by hard-filter
+
+
+class InterestResult(BaseModel):
+    """Output of `express_interest()`.
+
+    Status determines next step in the UI flow:
+      - `wait` → show "we'll email you" mock-text and end
+      - `interested` → render role-specific pre-filled form
+    """
+
+    status: Literal["wait", "interested"]
+    candidate_id: int
+    ad_id: int
+    prefilled_questions: list[PrefilledQuestion] = Field(default_factory=list)
+
+
+class RoleSpecificResult(BaseModel):
+    """Output of `submit_role_specific()`. The final confirmation card."""
+
+    candidate_id: int
+    ad_id: int
+    match: MatchScore

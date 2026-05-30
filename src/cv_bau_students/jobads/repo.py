@@ -72,6 +72,30 @@ def list_ads() -> list[JobAd]:
         return [_to_pydantic(session, r) for r in rows]
 
 
+def get_ad_by_id(ad_id: int) -> JobAd | None:
+    """Direct lookup — replaces the linear scan that lived in app.py."""
+    with get_session() as session:
+        row = session.get(JobAdRow, ad_id)
+        if row is None:
+            return None
+        return _to_pydantic(session, row)
+
+
+def find_ad_by_title_substring(needle: str) -> JobAd | None:
+    """Helper for seed scripts that target ads by a known title fragment.
+
+    Used by `scripts/seed_target_demo.py` to resolve the target row at
+    runtime so the script isn't tied to a specific row id across DB
+    rebuilds.
+    """
+    needle_lower = needle.lower()
+    with get_session() as session:
+        for row in session.execute(select(JobAdRow)).scalars().all():
+            if needle_lower in (row.title or "").lower():
+                return _to_pydantic(session, row)
+        return None
+
+
 def find_candidate_ads(
     *,
     levels: list[str] | None = None,
