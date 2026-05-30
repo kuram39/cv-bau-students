@@ -108,6 +108,31 @@ class SkillHierarchy(Base):
     child_id: Mapped[int] = mapped_column(ForeignKey("skills.id"), primary_key=True)
 
 
+# --- Occupation → skill mapping (ESCO Phase 11c) ---------------------------
+
+
+class SkillIndustryMap(Base):
+    """Which skills are essential / optional for which ISCO occupations.
+
+    Populated from ESCO's `occupationSkillRelations.csv` joined with
+    `occupations.csv` to surface ISCO-08 4-digit codes. The matcher
+    uses this for target-role-first scoring: pick an ISCO code, get
+    the expected skill set, intersect with the candidate's translated
+    capabilities, compute coverage + bridge gap.
+    """
+
+    __tablename__ = "skill_industry_map"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id"), index=True)
+    isco_code: Mapped[str] = mapped_column(String(8), index=True)
+    occupation_uri: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    relation_type: Mapped[str] = mapped_column(String(16))  # 'essential' or 'optional'
+
+    __table_args__ = (
+        UniqueConstraint("skill_id", "isco_code", "relation_type", name="uq_skill_industry"),
+    )
+
+
 # --- Level checklists (junior / medior / senior per domain) -----------------
 
 

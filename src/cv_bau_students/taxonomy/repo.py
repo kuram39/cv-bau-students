@@ -10,7 +10,7 @@ from functools import lru_cache
 from sqlalchemy import select
 
 from cv_bau_students.db import get_session
-from cv_bau_students.db_models import Skill, SkillAlias, SkillHierarchy
+from cv_bau_students.db_models import Skill, SkillAlias, SkillHierarchy, SkillIndustryMap
 
 
 def resolve_skill(name: str) -> tuple[int, str] | None:
@@ -81,3 +81,36 @@ def canonical_for_alias(raw: str) -> str | None:
     """Convenience wrapper — return the canonical name for a raw string."""
     match = resolve_skill(raw)
     return match[1] if match else None
+
+
+def expected_skills_for_isco(
+    isco_code: str,
+    relation: str = "essential",
+) -> list[int]:
+    """Return skill_ids the ISCO occupation expects for `relation`.
+
+    Used by the target-role-first matcher: pick an ISCO code, get the
+    expected skill set from ESCO's occupation-skill mapping, intersect
+    with the candidate's translated capabilities to score coverage and
+    surface the bridge gap.
+
+    Args:
+        isco_code: ISCO-08 4-digit code (e.g. "25120" for software
+            developer). Stored as string because some ESCO codes have
+            leading zeros (e.g. "0210").
+        relation: "essential" (default) or "optional". Pass "" to get
+            all skills regardless of relation type.
+
+    Returns sorted list of skill_ids — empty list when the ISCO code
+    has no mapped skills (unknown code, or Phase 11c not yet loaded).
+    """
+    if not isco_code:
+        return []
+    with get_session() as session:
+        stmt = select(SkillIndustryMap.skill_id).where(
+            SkillIndustryMap.isco_code == isco_code.strip()
+        )
+        if relation:
+            stmt = stmt.where(SkillIndustryMap.relation_type == relation)
+        rows = session.execute(stmt).scalars().all()
+    return sorted(set(rows))

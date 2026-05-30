@@ -13,7 +13,7 @@ from cv_bau_students.db_models import LevelChecklist, Skill, SkillAlias
 
 
 def test_init_db_creates_all_tables():
-    """All 10 tables should be present after init_db()."""
+    """All 13 tables should be present after init_db()."""
     inspector = inspect(_engine())
     table_names = set(inspector.get_table_names())
     expected = {
@@ -24,6 +24,7 @@ def test_init_db_creates_all_tables():
         "skills",
         "skill_aliases",
         "skill_hierarchy",
+        "skill_industry_map",
         "level_checklists",
         "job_ads",
         "job_ad_skills",
