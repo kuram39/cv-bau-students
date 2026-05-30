@@ -58,6 +58,10 @@ class CompletionQuestionRow(Base):
     field: Mapped[str] = mapped_column(String(128))
     question: Mapped[str] = mapped_column(Text)
     answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Phase 12a: distinguish BAU-mandatory completion loop (default) from
+    # other future kinds. Role-specific Q&A lives in its own pair of tables
+    # below — not in CompletionQuestionRow.
+    kind: Mapped[str] = mapped_column(String(16), default="bau_mandatory")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -130,6 +134,67 @@ class SkillIndustryMap(Base):
 
     __table_args__ = (
         UniqueConstraint("skill_id", "isco_code", "relation_type", name="uq_skill_industry"),
+    )
+
+
+# --- Role-specific Q&A + interest expression (Phase 12a) -------------------
+
+
+class RoleSpecificQuestion(Base):
+    """One row per fixed personalised question per job ad.
+
+    Generated ONCE per ad (LLM call) and replayed identically for every
+    candidate who expresses interest in that ad — guarantees fairness
+    + consistency across applicants. `slot` is a stable string key
+    (e.g. "elevator_pitch_for_role", "bi_tool_experience") used to
+    join with `RoleSpecificAnswer` rows across candidates.
+    """
+
+    __tablename__ = "role_specific_questions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ad_id: Mapped[int] = mapped_column(ForeignKey("job_ads.id"), index=True)
+    slot: Mapped[str] = mapped_column(String(64))
+    question_text: Mapped[str] = mapped_column(Text)
+    extract_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("ad_id", "slot", name="uq_role_question"),)
+
+
+class CandidateInterest(Base):
+    """Candidate's choice when offered a match: 'interested' or 'wait'."""
+
+    __tablename__ = "candidate_interests"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), index=True)
+    ad_id: Mapped[int] = mapped_column(ForeignKey("job_ads.id"), index=True)
+    status: Mapped[str] = mapped_column(String(16))  # 'interested' | 'wait'
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("candidate_id", "ad_id", name="uq_candidate_interest"),)
+
+
+class RoleSpecificAnswer(Base):
+    """Candidate's answer to one role-specific question for one ad.
+
+    `was_prefilled` = the system suggested an answer extracted from CV.
+    `was_edited` = the user changed the suggestion before submitting.
+    Both flags surface in the recruiter drill-in so they see how much
+    deliberate effort each candidate put in.
+    """
+
+    __tablename__ = "role_specific_answers"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), index=True)
+    ad_id: Mapped[int] = mapped_column(ForeignKey("job_ads.id"), index=True)
+    slot: Mapped[str] = mapped_column(String(64))
+    answer_text: Mapped[str] = mapped_column(Text)
+    was_prefilled: Mapped[bool] = mapped_column(default=False)
+    was_edited: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "ad_id", "slot", name="uq_role_specific_answer"),
     )
 
 

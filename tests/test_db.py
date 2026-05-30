@@ -13,7 +13,7 @@ from cv_bau_students.db_models import LevelChecklist, Skill, SkillAlias
 
 
 def test_init_db_creates_all_tables():
-    """All 13 tables should be present after init_db()."""
+    """All 16 tables should be present after init_db()."""
     inspector = inspect(_engine())
     table_names = set(inspector.get_table_names())
     expected = {
@@ -30,6 +30,10 @@ def test_init_db_creates_all_tables():
         "job_ad_skills",
         "matches",
         "reasoning_cache",
+        # Phase 12a additions:
+        "role_specific_questions",
+        "candidate_interests",
+        "role_specific_answers",
     }
     assert expected.issubset(table_names), f"missing tables: {expected - table_names}"
 
