@@ -280,6 +280,25 @@ class JobAdSkill(Base):
     requirement: Mapped[str] = mapped_column(String(16))  # must_have | nice_to_have
 
 
+class AdTargetSkill(Base):
+    """Recruiter-curated target skill set for an ad (Phase B skill-picker).
+
+    The recruiter picks, from the ad's ISCO occupation skills (ESCO), a small
+    explicit target set tagged `core` or `optional`. When present, the matcher
+    scores role coverage against THIS curated set instead of the full ~500
+    essential∪optional ESCO list — so coverage is interpretable (e.g. 4/10
+    core) and reflects what the recruiter actually wants, not auto-inference.
+    """
+
+    __tablename__ = "ad_target_skills"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ad_id: Mapped[int] = mapped_column(ForeignKey("job_ads.id"), index=True)
+    skill_id: Mapped[int] = mapped_column(ForeignKey("skills.id"), index=True)
+    tier: Mapped[str] = mapped_column(String(16))  # 'core' | 'optional'
+
+    __table_args__ = (UniqueConstraint("ad_id", "skill_id", name="uq_ad_target_skill"),)
+
+
 # --- Matches + reasoning cache ---------------------------------------------
 
 

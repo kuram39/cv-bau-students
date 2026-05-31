@@ -4,7 +4,16 @@ from scripts.load_seeds import _load_checklists, _load_taxonomy, _truncate_taxon
 
 from cv_bau_students.config import LEVEL_CHECKLISTS_CSV, TAXONOMY_SEED_CSV
 from cv_bau_students.db import get_session
-from cv_bau_students.jobads.repo import get_ad_by_id, list_ads, set_ad_isco, store_ad
+from cv_bau_students.db_models import JobAdRow, Skill, SkillIndustryMap
+from cv_bau_students.jobads.repo import (
+    get_ad_by_id,
+    get_target_skills,
+    list_ads,
+    set_ad_isco,
+    set_target_skills,
+    store_ad,
+    suggest_target_skills,
+)
 from cv_bau_students.models import JobAd, LanguageRequirement
 
 
@@ -42,6 +51,54 @@ def test_set_ad_isco_clears_stale_code():
     assert fetched.isco_code is None
     assert fetched.isco_occupation_label is None
     assert fetched.isco_method == "unresolved"
+
+
+def test_target_skills_suggest_and_roundtrip():
+    # Seed ESCO skills + an occupation map for ISCO 2511.
+    with get_session() as session:
+        for n in ("data mining", "reporting", "noise"):
+            session.add(Skill(canonical_name=n, canonical_name_en=n, esco_uri=f"uri:{n}"))
+        session.flush()
+        ids = {
+            s.canonical_name: s.id
+            for s in session.query(Skill).filter(Skill.esco_uri.is_not(None)).all()
+        }
+        session.add(
+            SkillIndustryMap(
+                skill_id=ids["data mining"], isco_code="2511", relation_type="essential"
+            )
+        )
+        session.add(
+            SkillIndustryMap(skill_id=ids["reporting"], isco_code="2511", relation_type="optional")
+        )
+        ad = JobAdRow(
+            title="Data Analyst",
+            location="Praha",
+            remote_mode="hybrid",
+            level="junior",
+            domain="data-analyst",
+            source="synthetic",
+            raw_text="...",
+            isco_code="2511",
+        )
+        session.add(ad)
+        session.flush()
+        ad_id = ad.id
+
+    sugg = suggest_target_skills(ad_id)
+    assert "data mining" in [n for _, n in sugg["core"]]
+    assert "reporting" in [n for _, n in sugg["optional"]]
+
+    assert get_target_skills(ad_id) is None  # nothing curated yet
+    set_target_skills(ad_id, core=[ids["data mining"]], optional=[ids["reporting"]])
+    got = get_target_skills(ad_id)
+    assert got == {"core": {ids["data mining"]}, "optional": {ids["reporting"]}}
+
+    # Re-save replaces wholesale; core wins on overlap.
+    set_target_skills(ad_id, core=[ids["reporting"]], optional=[ids["reporting"]])
+    got = get_target_skills(ad_id)
+    assert got["core"] == {ids["reporting"]}
+    assert got.get("optional", set()) == set()
 
 
 def test_store_ad_then_list_returns_normalised_skills():
