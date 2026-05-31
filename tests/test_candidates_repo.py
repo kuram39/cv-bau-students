@@ -19,6 +19,7 @@ from cv_bau_students.models import (
     CandidateProfile,
     GapItem,
     MatchScore,
+    SkillFitDetail,
     TranslatedCapability,
 )
 
@@ -311,6 +312,53 @@ def test_get_candidate_detail_joins_role_answers_with_audit_flags():
     assert answer.slot == "why_role"
     assert answer.was_prefilled is True
     assert answer.was_edited is False
+
+
+def test_store_initial_candidate_persists_raw_cv_text():
+    profile = _student_profile()
+    cid = repo.store_initial_candidate(
+        file_hash="h-raw",
+        profile=profile,
+        capabilities=[],
+        raw_cv_text="Jan Novák\nPython, SQL\nthesis on churn prediction",
+    )
+    ad_id = _make_ad()
+    repo.record_interest(cid, ad_id, "interested")
+    repo.store_match(cid, ad_id, match=_make_match(ad_id))
+
+    detail = repo.get_candidate_detail(cid, ad_id)
+    assert detail is not None
+    assert "churn prediction" in detail.raw_cv_text
+
+
+def test_skill_fit_detail_round_trips():
+    profile = _student_profile()
+    cid = repo.store_initial_candidate(file_hash="h-sfd", profile=profile, capabilities=[])
+    ad_id = _make_ad()
+    repo.record_interest(cid, ad_id, "interested")
+
+    detail_in = SkillFitDetail(
+        matched_must=["SQL", "Python"],
+        missing_must=["Power BI"],
+        isco_code="2511",
+        occupation_label="data analyst",
+        role_essential_total=6,
+        role_essential_evidenced=4,
+        role_essential_matched=["data mining"],
+        role_essential_missing=["reporting"],
+        bonus_applied=6.0,
+    )
+    match = _make_match(ad_id)
+    match.skill_fit_detail = detail_in
+    repo.store_match(cid, ad_id, match=match)
+
+    got = repo.get_candidate_detail(cid, ad_id)
+    assert got.match.skill_fit_detail is not None
+    sfd = got.match.skill_fit_detail
+    assert sfd.isco_code == "2511"
+    assert sfd.matched_must == ["SQL", "Python"]
+    assert sfd.bonus_applied == 6.0
+    assert sfd.role_essential_evidenced == 4
 
 
 def test_stats_for_ad_aggregates():

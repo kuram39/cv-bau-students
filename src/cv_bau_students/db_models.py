@@ -34,6 +34,9 @@ class Candidate(Base):
     cv_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     language: Mapped[str] = mapped_column(String(2), default="en")
     type: Mapped[str] = mapped_column(String(32))  # student / career_changer / experienced
+    # Original extracted CV text, so the recruiter can audit the source
+    # behind every score. Truncated by the writer to bound row size.
+    raw_cv_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     profile_versions: Mapped[list["ProfileVersion"]] = relationship(back_populates="candidate")
@@ -137,6 +140,30 @@ class SkillIndustryMap(Base):
     )
 
 
+class Occupation(Base):
+    """ESCO occupation labels keyed by ISCO-08 group — drives the
+    role→ISCO resolver.
+
+    Loaded from ESCO `occupations_{en,cs}.csv`. `data/raw_esco/` is
+    gitignored (absent on Streamlit Cloud), so the labels must ride in
+    `seed.sqlite.gz` — hence a DB table rather than a runtime CSV read.
+    The resolver lexically matches an ad's title/domain against
+    `preferred_label` + `alt_labels` (both languages) to land on the
+    right `isco_code`, then `SkillIndustryMap` supplies the expected
+    skill set for that code.
+    """
+
+    __tablename__ = "occupations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    occupation_uri: Mapped[str] = mapped_column(String(255), index=True)
+    isco_code: Mapped[str] = mapped_column(String(8), index=True)
+    preferred_label: Mapped[str] = mapped_column(String(255), index=True)
+    alt_labels: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    lang: Mapped[str] = mapped_column(String(8), default="en", index=True)
+
+    __table_args__ = (UniqueConstraint("occupation_uri", "lang", name="uq_occupation_lang"),)
+
+
 # --- Role-specific Q&A + interest expression (Phase 12a) -------------------
 
 
@@ -229,6 +256,13 @@ class JobAdRow(Base):
     raw_text: Mapped[str] = mapped_column(Text)
     ad_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     languages_required: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Target-role-first scoring: ISCO occupation this ad maps to, resolved
+    # once (lexical or LLM fallback). Feeds expected_skills_for_isco() in
+    # the matcher. None = unresolved → enrichment silently skipped.
+    isco_code: Mapped[str | None] = mapped_column(String(8), nullable=True, index=True)
+    isco_occupation_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # isco_method ∈ {lexical, llm, unresolved}
+    isco_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -254,6 +288,10 @@ class Match(Base):
     total: Mapped[float] = mapped_column(Float)
     confidence_band: Mapped[float] = mapped_column(Float)
     bridge_plan_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # Audit trail for skill_fit: matched/missing must+nice, the ISCO role
+    # match, and which role-essential ESCO skills the candidate evidenced.
+    # Mirrors models.SkillFitDetail. None for legacy/no-isco matches.
+    skill_fit_detail_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

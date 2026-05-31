@@ -56,6 +56,7 @@ def _extract_and_classify(file_bytes: bytes, filename: str) -> tuple[CandidatePr
 
     meta = {
         "filename": filename,
+        "raw_text": raw_text,  # passed through so the candidate row can store it
         "raw_text_chars": len(raw_text),
         "detector_llm_agrees": classification.llm_agrees,
         "detector_reasons": classification.reasons,
@@ -166,6 +167,7 @@ def run_generic_pass(
             file_hash=candidates_repo.cv_hash(file_bytes),
             profile=profile,
             capabilities=translated_partial,
+            raw_cv_text=meta.get("raw_text"),
         )
         open_round = completion_rounds[-1] if completion_rounds else None
         return GenericResult(
@@ -181,6 +183,7 @@ def run_generic_pass(
         file_hash=candidates_repo.cv_hash(file_bytes),
         profile=profile,
         capabilities=translated,
+        raw_cv_text=meta.get("raw_text"),
     )
 
     # Vrstva A (hard filter) + Vrstva B (scoring) live inside rank_candidate.

@@ -118,6 +118,8 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
     c2.metric("Bridge fit", bridge_display)
     c3.metric("Personal fit", f"{m.personal_fit:.0f}")
 
+    _render_skill_fit_detail(m.skill_fit_detail)
+
     if m.bridge_plan:
         st.markdown("**Bridge plan** (co doplnit pro vyšší úroveň):")
         for gap in m.bridge_plan:
@@ -166,5 +168,35 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
         except (json.JSONDecodeError, TypeError):
             st.write(m.reasoning)
 
+    if detail.raw_cv_text:
+        with st.expander("📄 Původní CV (raw text)"):
+            st.text(detail.raw_cv_text)
+
     with st.expander("🔧 Raw profil JSON"):
         st.json(detail.profile.model_dump())
+
+
+def _render_skill_fit_detail(d) -> None:
+    """Why skill_fit is what it is: must/nice coverage + ESCO role match."""
+    if d is None:
+        return
+    matched_must = ", ".join(d.matched_must) or "—"
+    matched_nice = ", ".join(d.matched_nice) or "—"
+    st.caption(f"✅ Must: {matched_must} · Nice: {matched_nice}")
+    if d.missing_must:
+        st.caption(f"❌ Chybí must: {', '.join(d.missing_must)}")
+
+    if d.isco_code:
+        label = d.occupation_label or "—"
+        bonus = f" · bonus +{d.bonus_applied:.0f}" if d.bonus_applied else ""
+        st.caption(
+            f"🎯 Role: {label} (ISCO {d.isco_code}) — evidováno "
+            f"{d.role_essential_evidenced}/{d.role_essential_total} essential ESCO skills"
+            f"{bonus}"
+        )
+        if d.role_essential_matched:
+            st.caption("🟢 Role-essential prokázané: " + " · ".join(d.role_essential_matched))
+        if d.role_essential_missing:
+            st.caption(
+                "⚪ Role-essential chybějící (ukázka): " + " · ".join(d.role_essential_missing)
+            )

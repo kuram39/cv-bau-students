@@ -38,6 +38,9 @@ def store_ad(ad: JobAd) -> int:
             languages_required=[
                 {"language": lr.language, "min_level": lr.min_level} for lr in ad.languages_required
             ],
+            isco_code=ad.isco_code,
+            isco_occupation_label=ad.isco_occupation_label,
+            isco_method=ad.isco_method,
         )
         session.add(row)
         session.flush()
@@ -72,6 +75,9 @@ def set_ad_fields_and_skills(
     must_have: list[str] | None = None,
     nice_to_have: list[str] | None = None,
     languages_required: list[LanguageRequirement] | None = None,
+    isco_code: str | None = None,
+    isco_occupation_label: str | None = None,
+    isco_method: str | None = None,
 ) -> None:
     """In-place edit of a single ad — used by the seed script to turn a
     scraped row into the demo target (rename employer, enrich skills).
@@ -88,6 +94,12 @@ def set_ad_fields_and_skills(
             row.employer = employer
         if raw_text is not None:
             row.raw_text = raw_text
+        if isco_code is not None:
+            row.isco_code = isco_code
+        if isco_occupation_label is not None:
+            row.isco_occupation_label = isco_occupation_label
+        if isco_method is not None:
+            row.isco_method = isco_method
         if languages_required is not None:
             row.languages_required = [
                 {"language": lr.language, "min_level": lr.min_level} for lr in languages_required
@@ -214,4 +226,31 @@ def _to_pydantic(session: Session, row: JobAdRow) -> JobAd:
         raw_text=row.raw_text,
         source=row.source,  # type: ignore[arg-type]
         ad_url=row.ad_url,
+        isco_code=row.isco_code,
+        isco_occupation_label=row.isco_occupation_label,
+        isco_method=row.isco_method,
     )
+
+
+def resolve_ad_isco(ad_id: int) -> tuple[str | None, str | None, str]:
+    """Run the role→ISCO resolver for one ad and persist the result.
+
+    Resolution is kept out of `store_ad` (bulk ad loads must not trigger
+    per-row LLM calls); callers that want a target-role mapping — the
+    seed script, primarily — invoke this once. Returns
+    (isco_code, occupation_label, method). Lexical hits cost nothing;
+    edge cases fall back to a single cheap LLM call.
+    """
+    from cv_bau_students.roles.isco_resolver import resolve_isco_for_ad
+
+    ad = get_ad_by_id(ad_id)
+    if ad is None:
+        raise LookupError(f"ad_id {ad_id} not found")
+    isco_code, label, method = resolve_isco_for_ad(ad.title, ad.domain, ad.must_have)
+    set_ad_fields_and_skills(
+        ad_id,
+        isco_code=isco_code,
+        isco_occupation_label=label,
+        isco_method=method,
+    )
+    return isco_code, label, method

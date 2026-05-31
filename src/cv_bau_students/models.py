@@ -158,6 +158,31 @@ class JobAd(BaseModel):
     raw_text: str
     source: Literal["scraped", "synthetic"]
     ad_url: str | None = None
+    # Target-role-first scoring: resolved ISCO-08 occupation (see
+    # roles/isco_resolver.py). None = unresolved → matcher skips ESCO
+    # enrichment. `isco_method` ∈ {"lexical", "llm", "unresolved"}.
+    isco_code: str | None = None
+    isco_occupation_label: str | None = None
+    isco_method: str | None = None
+
+
+class SkillFitDetail(BaseModel):
+    """Audit trail for the skill_fit axis — what matched, what's missing,
+    and how the ESCO target-role enrichment landed. Surfaced verbatim in
+    the recruiter drill-in so a score is never a bare number.
+    """
+
+    matched_must: list[str] = Field(default_factory=list)
+    missing_must: list[str] = Field(default_factory=list)
+    matched_nice: list[str] = Field(default_factory=list)
+    # ESCO target-role enrichment (only when the ad resolved to an ISCO code).
+    isco_code: str | None = None
+    occupation_label: str | None = None
+    role_essential_total: int = 0  # |essential ESCO skills for this ISCO|
+    role_essential_evidenced: int = 0  # how many the candidate demonstrates
+    role_essential_matched: list[str] = Field(default_factory=list)
+    role_essential_missing: list[str] = Field(default_factory=list)  # capped sample
+    bonus_applied: float = 0.0  # points the enrichment added to base skill_fit
 
 
 class MatchScore(BaseModel):
@@ -171,6 +196,7 @@ class MatchScore(BaseModel):
     total: float = Field(ge=0.0, le=100.0)
     confidence_band: float  # ± points around total
     bridge_plan: list[GapItem] = Field(default_factory=list)
+    skill_fit_detail: SkillFitDetail | None = None  # how skill_fit was computed
     reasoning: str | None = None  # filled by LLM #3
 
 

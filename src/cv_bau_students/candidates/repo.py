@@ -32,8 +32,12 @@ from cv_bau_students.models import (
     CandidateProfile,
     GapItem,
     MatchScore,
+    SkillFitDetail,
     TranslatedCapability,
 )
+
+# Cap stored CV text so a pathological upload can't bloat a row.
+_RAW_CV_MAX_CHARS = 20_000
 
 # --- Recruiter-facing view models ------------------------------------------
 
@@ -69,6 +73,7 @@ class CandidateDetail(BaseModel):
     capabilities: list[TranslatedCapability] = Field(default_factory=list)
     match: MatchScore
     role_answers: list[RoleAnswerView] = Field(default_factory=list)
+    raw_cv_text: str | None = None  # original extracted CV text, for audit
 
 
 # --- Helpers ---------------------------------------------------------------
@@ -93,12 +98,16 @@ def store_initial_candidate(
     file_hash: str,
     profile: CandidateProfile,
     capabilities: Iterable[TranslatedCapability],
+    raw_cv_text: str | None = None,
 ) -> int:
     """Upsert a Candidate row + replace ProfileVersion + TranslatedCapability.
 
-    Returns the `Candidate.id` (existing on dedup, new otherwise).
+    `raw_cv_text` is the original extracted CV text (truncated), persisted
+    so the recruiter can audit the source behind a score. Returns the
+    `Candidate.id` (existing on dedup, new otherwise).
     """
     capabilities = list(capabilities)
+    cv_text = raw_cv_text[:_RAW_CV_MAX_CHARS] if raw_cv_text else None
     with get_session() as session:
         existing = session.execute(
             select(Candidate).where(Candidate.cv_hash == file_hash)
@@ -108,6 +117,7 @@ def store_initial_candidate(
                 cv_hash=file_hash,
                 language=profile.language,
                 type=profile.candidate_type,
+                raw_cv_text=cv_text,
             )
             session.add(cand)
             session.flush()
@@ -115,6 +125,8 @@ def store_initial_candidate(
         else:
             existing.language = profile.language
             existing.type = profile.candidate_type
+            if cv_text is not None:
+                existing.raw_cv_text = cv_text
             candidate_id = existing.id
 
         # ProfileVersion: append a new row with round=N so re-uploads keep history.
@@ -258,6 +270,7 @@ def store_match(
         existing = session.execute(
             select(Match).where(Match.candidate_id == candidate_id, Match.ad_id == ad_id)
         ).scalar_one_or_none()
+        detail_json = match.skill_fit_detail.model_dump() if match.skill_fit_detail else None
         if existing is None:
             session.add(
                 Match(
@@ -269,6 +282,7 @@ def store_match(
                     total=match.total,
                     confidence_band=match.confidence_band,
                     bridge_plan_json=[g.model_dump() for g in match.bridge_plan],
+                    skill_fit_detail_json=detail_json,
                 )
             )
         else:
@@ -278,6 +292,7 @@ def store_match(
             existing.total = match.total
             existing.confidence_band = match.confidence_band
             existing.bridge_plan_json = [g.model_dump() for g in match.bridge_plan]
+            existing.skill_fit_detail_json = detail_json
 
 
 # --- Recruiter-facing read paths --------------------------------------------
@@ -403,6 +418,9 @@ def get_candidate_detail(candidate_id: int, ad_id: int) -> CandidateDetail | Non
             total=m.total,
             confidence_band=m.confidence_band,
             bridge_plan=[GapItem(**g) for g in (m.bridge_plan_json or [])],
+            skill_fit_detail=(
+                SkillFitDetail(**m.skill_fit_detail_json) if m.skill_fit_detail_json else None
+            ),
             reasoning=_load_match_reasoning(session, candidate_id, ad_id),
         )
 
@@ -413,6 +431,7 @@ def get_candidate_detail(candidate_id: int, ad_id: int) -> CandidateDetail | Non
             capabilities=capabilities,
             match=match,
             role_answers=role_answers,
+            raw_cv_text=cand.raw_cv_text,
         )
 
 
