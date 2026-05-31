@@ -103,6 +103,41 @@ CZ-ISCO map (~3,500 API calls for a granular, poorly-matching parallel skill set
 not worth it. Revisit only if Czech resolution proves weak after a keyed `esco_term`
 re-translate.
 
+## Post-review recommendations (2026-05-31, PRs #7–#18)
+
+Alignment: all 11 PRs stay tightly on-mission. No scope creep, no architectural drift.
+
+### R5 — Vendor tool ESCO aliases (HIGH ROI, LOW EFFORT)
+
+~30% of data-analyst CV phrases miss ESCO resolution because common tools (`Power BI`,
+`Tableau`, `pandas`, `scikit-learn`, `matplotlib`, `SPSS`, `Excel`) are absent or only
+weakly represented in ESCO v1.2. Since the demo is a data-analyst ad, this is the
+single most impactful unaddressed resolution gap.
+
+Fix: `scripts/load_vendor_aliases.py` — a curated 20–30 entry dict mapping tool names
+to their closest ESCO skill `uri`, inserted as `source="vendor"` aliases via the
+existing `_persist_competency` path. Owner-run once; seed rebuild propagates it.
+Effort: ~2h. No new deps, no schema change, no API calls.
+
+### R6 — Postgres migration `--truncate` safety (LOW EFFORT, PRODUCTION RISK)
+
+`scripts/migrate_sqlite_to_postgres.py --truncate` has no guard against accidentally
+targeting the wrong (populated) production database. A table drop + re-insert on the
+wrong Neon instance would silently wipe real candidate CVs.
+
+Fix: require `--confirm-destroy` flag alongside `--truncate`, or prompt the user with
+the target DB host + row count before proceeding. One-liner.
+
+### R7 — Resolution rate re-measurement (DIAGNOSTIC, ~1h)
+
+After PRs #9 (normalisation), #10 (diacritics), #12 (NSP hard-skills), #18 (memoize),
+the resolution rate has not been re-measured against the demo CVs. PR #9 established
+21% → 33% as a baseline; the current rate is likely higher but unknown.
+
+A `scripts/measure_resolution.py` — run the 6 demo CVs through `resolve_skill_esco`
+and count hits/misses by bucket (exact, alias, fuzzy, LLM-term, none) — would give
+confidence and surface the next highest-ROI fix. Roughly 30 min to write.
+
 ## Recommended interview-answer order
 
 > **"Co padne první?"**

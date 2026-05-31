@@ -88,19 +88,39 @@ with an empty `email` skips it.
 
 ## Current state / open items
 
-- Phases 1–12 shipped. Model on Sonnet 4.6 + selective thinking (PRs #1–#3 merged).
-- Target-role-first scoring + recruiter audit shipped (`feat/target-role-scoring`):
-  ads resolve to an ISCO occupation (`roles/isco_resolver.py`, lexical→LLM);
-  `expected_skills_for_isco()` now feeds skill_fit as a capped enrichment bonus +
-  gap surface (`matcher/score.py`, `SkillFitDetail`); recruiter drill-in shows the
-  breakdown + original CV text (`Candidate.raw_cv_text`).
-- Deferred (candidates, not started):
-  - LLM-cost optimisation (8→4 calls per applicant) — documented in `docs/RISKS.md`,
-    planned for a `perf/llm-cost` branch.
-  - Diacritics-strip in `resolve_skill` (CV "dulni nakladac" w/o háčky → None).
-    (The resolver already strips diacritics; `resolve_skill` still doesn't.)
+PRs #1–#18 merged as of 2026-05-31. Highlights:
+
+- Model on Sonnet 4.6, `think=True` on exactly 2 interpretive calls (`translate`,
+  `reason`). `LLM_THINK_MAX_TOKENS=12000`, `LLM_THINK_BUDGET=8000` (budgeted, not
+  adaptive — adaptive ate the whole ceiling and returned blank JSON; fixed in #17).
+- Target-role-first scoring + recruiter audit (#5): ISCO resolver, capped enrichment
+  bonus, skill_fit breakdown, raw CV text stored.
+- ESCO namespace unification (#6): `resolve_skill_esco` + `esco_term` in translate;
+  candidate skills now intersect the occupation's essential∪optional set.
+- Recruiter skill-picker (#8): `ad_target_skills` table; curated target set drives
+  coverage (coverage `/520` → `/N`, interpretable). UI multiselect prefilled from ISCO.
+- Skill resolution improvements (#9, #10): qualifier strip, UK/US spelling, diacritics
+  fallback in `resolve_skill` (Czech CVs without háčky now resolve). Resolution rate
+  21% → 33%+ deterministically; LLM `esco_term` handles the cross-lingual tail.
+- NSP/CDK aliases (#7, #12): 40 soft/digi + ~10k hard-skill competencies loaded as
+  Czech aliases on ESCO backbone (`--aliases-only`; unmatched → skipped, no bloat).
+- Skill resolver memoization (#18): `lru_cache(8192)` on both resolvers — kills the
+  O(candidates × ads × 90k-scan) blowup that made `seed_target_demo` run 14 min.
+- Postgres persistence path (#16): `psycopg2-binary` added, `migrate_sqlite_to_postgres`
+  one-time pour, `docs/DEPLOY.md`. Set `CV_BAU_STUDENTS_DB_URL` env var on Cloud.
+
+Deferred (not started):
+  - **perf/llm-cost** — 8→4 LLM calls per applicant. Fully spec'd in `docs/RISKS.md`.
+    Next meaningful branch. Saves ~50% API cost with zero quality loss.
+  - **Vendor tool aliases** — `Power BI`, `Tableau`, `pandas`, `scikit-learn`, etc.
+    absent/weak in ESCO. ~30% of data-analyst CV phrases miss because of this. A
+    curated 20-30 entry map (`scripts/load_vendor_aliases.py`) would close the gap.
+  - **Seed rebuild** — NSP hard-skill aliases (#12) in live DB but `seed.sqlite.gz`
+    not yet regenerated. Owner: run `load_nsp --api --include-hard-skills --aliases-only`
+    + `build_cloud_seed.py` before next Cloud deploy.
   - README/Mermaid refresh for the dual-panel flow; slide deck.
-- `docs/RISKS.md` is the interview answer-key (failure tiers, cost trade-off, scale).
+
+`docs/RISKS.md` is the interview answer-key (failure tiers, cost trade-off, scale).
 
 ## Gotchas
 
