@@ -64,6 +64,50 @@ def _store_ad_skills(
         session.add(JobAdSkill(ad_id=ad_id, skill_id=skill_id, requirement=requirement))
 
 
+def set_ad_fields_and_skills(
+    ad_id: int,
+    *,
+    employer: str | None = None,
+    raw_text: str | None = None,
+    must_have: list[str] | None = None,
+    nice_to_have: list[str] | None = None,
+    languages_required: list[LanguageRequirement] | None = None,
+) -> None:
+    """In-place edit of a single ad — used by the seed script to turn a
+    scraped row into the demo target (rename employer, enrich skills).
+
+    Only the provided fields are touched. When `must_have` /
+    `nice_to_have` are given, the ad's existing skill rows for that
+    requirement are replaced wholesale.
+    """
+    with get_session() as session:
+        row = session.get(JobAdRow, ad_id)
+        if row is None:
+            raise LookupError(f"ad_id {ad_id} not found")
+        if employer is not None:
+            row.employer = employer
+        if raw_text is not None:
+            row.raw_text = raw_text
+        if languages_required is not None:
+            row.languages_required = [
+                {"language": lr.language, "min_level": lr.min_level} for lr in languages_required
+            ]
+        if must_have is not None:
+            session.execute(
+                JobAdSkill.__table__.delete().where(
+                    (JobAdSkill.ad_id == ad_id) & (JobAdSkill.requirement == "must_have")
+                )
+            )
+            _store_ad_skills(session, ad_id, must_have, requirement="must_have")
+        if nice_to_have is not None:
+            session.execute(
+                JobAdSkill.__table__.delete().where(
+                    (JobAdSkill.ad_id == ad_id) & (JobAdSkill.requirement == "nice_to_have")
+                )
+            )
+            _store_ad_skills(session, ad_id, nice_to_have, requirement="nice_to_have")
+
+
 def list_ads() -> list[JobAd]:
     """Load every ad in the DB (for the demo this is fine; production
     paginates)."""
