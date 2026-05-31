@@ -103,35 +103,6 @@ The bridge plan reads from `data/level_checklists.csv` (junior / medior
 `bridgeable_in_months` or `None` — the latter is the "experience-only,
 no shortcut" wall the comparability stance explicitly preserves.
 
-## Architecture: hybrid fork of cv-estimator
-
-Decision rationale (full plan in `~/.claude/plans/`):
-
-| Path | Pros | Cons | Verdict |
-|---|---|---|---|
-| Build atop cv-estimator | Fastest start | Two products in one repo, schema collisions | Rejected |
-| Greenfield | Cleanest separation | Rebuild LLM wrapper + Pydantic discipline + Streamlit scaffold + deploy lessons | Rejected |
-| **Hybrid fork** | ~60 % code reuse with clean separation | Initial fork investment | **Chosen** |
-
-What transferred from cv-estimator:
-- `llm.py` (Anthropic wrapper, prompt loader, JSON-fence strip,
-  lazy import)
-- `extractors/document.py` (PDF/DOCX + language detect)
-- Pydantic discipline (`models.py` as the single output contract)
-- Skepticism prompt patterns (confidence + caveat + sequential ≠
-  synthesis + person ≠ role)
-- Streamlit scaffolding + Secrets bridge for deploy
-- Test pattern (autouse fixture, mock-by-prompt-substring dispatcher)
-- Deploy lessons (package-data declaration, `.` in requirements,
-  `__init__.py` in subpackage data dirs)
-
-What's new for cv-bau-students:
-- 12-table SQLAlchemy schema (vs cv-estimator's pure CSV)
-- Student-aware extraction + iterative completion loop
-- Capability translator (student artefacts → experienced language)
-- 3-axis matcher with bridge plan
-- Meta-reflection privacy-filtered logger
-
 ## Data layer
 
 SQLite via SQLAlchemy. 12 tables, sketched:
