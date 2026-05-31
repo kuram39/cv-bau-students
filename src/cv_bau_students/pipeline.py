@@ -276,11 +276,15 @@ def submit_role_specific(
     )
 
     profile = _load_candidate_profile(candidate_id)
-    # Fold the elevator pitch into the profile summary so personal-fit
-    # scoring sees it (when the candidate didn't already have a summary).
-    pitch = answers.get("elevator_pitch_for_role")
-    if pitch and not (profile.summary and profile.summary.strip()):
-        profile = profile.model_copy(update={"summary": pitch})
+    # Fold ALL questionnaire answers into the profile summary BEFORE re-translate
+    # so the questionnaire actually does its job: new evidence the candidate adds
+    # (e.g. "used SQL window functions on my thesis dataset") flows into the
+    # translated capabilities → skill_fit → rationale, not just the display.
+    answer_blob = "\n".join(f"- {slot}: {text}" for slot, text in answers.items() if text)
+    if answer_blob:
+        base = (profile.summary or "").strip()
+        merged = (base + "\n\nDoplňující odpovědi k pozici:\n" + answer_blob).strip()
+        profile = profile.model_copy(update={"summary": merged})
 
     translated = translate(profile)
     ad = get_ad_by_id(ad_id)

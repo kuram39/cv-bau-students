@@ -105,17 +105,19 @@ def _render_target_skill_picker(ad: JobAd) -> None:
 
         if st.button("✨ Načíst doporučené base dovednosti", key=f"preset_{ad.id}"):
             preset = jobads_repo.apply_base_preset(ad.id)
-            n = candidates_repo.rescore_ad(ad.id)
             if preset["core"] or preset["optional"]:
+                n = candidates_repo.rescore_ad(ad.id)
                 st.success(
                     f"Base preset uložen: {len(preset['core'])} core + "
                     f"{len(preset['optional'])} optional. Přepočítáno {n} kandidátů."
                 )
                 st.rerun()
             else:
+                # apply_base_preset is a no-op when nothing resolves → the
+                # recruiter's existing manual curation is left intact.
                 st.warning(
                     "Pro tuto pozici nešlo z inzerátu/ISCO odvodit žádné rozpoznané "
-                    "base dovednosti. Vyber je ručně níže."
+                    "base dovednosti. Stávající výběr ponechán beze změny — vyber ručně níže."
                 )
 
         opts = jobads_repo.target_skill_options(ad.id)

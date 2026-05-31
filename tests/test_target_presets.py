@@ -88,6 +88,23 @@ def test_apply_base_preset_persists_curated_set():
     assert stored["optional"] == applied["optional"]
 
 
+def test_apply_base_preset_noop_preserves_manual_curation():
+    """When nothing resolves, apply_base_preset must NOT wipe the recruiter's
+    existing manual target set (set_target_skills would delete-then-insert)."""
+    from cv_bau_students.jobads.repo import set_target_skills
+
+    ids = _seed_esco(["Foo"])
+    # No ISCO preset, must/nice are unresolvable nonsense → empty preset.
+    ad = _ad(must_have=["UtterlyUnknownSkill"], nice_to_have=[])
+    ad_id = _store_ad_with_isco(ad, None)
+    set_target_skills(ad_id, core=[ids["Foo"]], optional=[])  # manual curation
+
+    preset = apply_base_preset(ad_id)
+    assert preset["core"] == set() and preset["optional"] == set()
+    # Manual set survived.
+    assert get_target_skills(ad_id) == {"core": {ids["Foo"]}, "optional": set()}
+
+
 def test_options_pool_includes_ad_requirements_and_preset():
     ids = _seed_esco(["SQL", "Python", "data analysis"])
     ad_id = _store_ad_with_isco(_ad(), "2511")

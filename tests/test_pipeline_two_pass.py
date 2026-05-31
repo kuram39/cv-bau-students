@@ -224,6 +224,31 @@ def test_full_interested_flow_writes_match_and_answers():
         assert by_slot["motivation_or_scenario"].was_prefilled is False
 
 
+def test_submit_folds_answers_into_translate():
+    """Questionnaire answers must reach the re-translate (so new evidence flows
+    into capabilities/skill_fit/rationale) — not just the display rows."""
+    _translate_raw.cache_clear()
+    ad_id = _seed_target_ad()
+    captured: dict[str, str | None] = {}
+
+    def _capture(profile):
+        captured["summary"] = profile.summary
+        return []
+
+    with patch("cv_bau_students.llm.call_json", side_effect=_dispatcher(_COMPLETE_PROFILE)):
+        gen = run_generic_pass(b"cv fold", "anna.txt")
+        express_interest(gen.candidate_id, ad_id, "interested")
+        with patch("cv_bau_students.pipeline.translate", side_effect=_capture):
+            submit_role_specific(
+                gen.candidate_id,
+                ad_id,
+                answers={"python_experience": "Použil jsem window functions na diplomce."},
+                prefilled_set=set(),
+                edited_set=set(),
+            )
+    assert "window functions" in (captured["summary"] or "")
+
+
 def test_role_questions_generated_once_across_candidates():
     """Fairness: two candidates interested in the same ad see identical Qs."""
     _translate_raw.cache_clear()

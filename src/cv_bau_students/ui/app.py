@@ -60,7 +60,7 @@ tab_candidate, tab_recruiter = st.tabs(
 )
 
 with tab_candidate:
-    render_candidate_panel()
+    render_candidate_panel(target_ad)
 
 with tab_recruiter:
     render_recruiter_panel(target_ad)

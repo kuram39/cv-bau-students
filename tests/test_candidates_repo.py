@@ -189,6 +189,28 @@ def test_store_role_answers_tracks_prefilled_and_edited():
     assert by_slot["long_term"].was_edited is False
 
 
+def test_store_role_answers_replace_clears_omitted_slots():
+    """Replace-semantics: a re-submit drops slots not present this time. A blank
+    submit ({}) must wipe a prior run's answers (e.g. stale AI-drafted ones)."""
+    from cv_bau_students.db_models import RoleSpecificAnswer
+
+    profile = _student_profile()
+    cid = repo.store_initial_candidate(file_hash="h-replace", profile=profile, capabilities=[])
+    ad_id = _make_ad()
+    repo.store_role_answers(
+        cid,
+        ad_id,
+        answers={"elevator_pitch": "old", "bi_tool": "Power BI"},
+        prefilled_set=set(),
+        edited_set=set(),
+    )
+    # Re-submit blank → all prior rows gone.
+    repo.store_role_answers(cid, ad_id, answers={}, prefilled_set=set(), edited_set=set())
+    with get_session() as session:
+        n = session.query(RoleSpecificAnswer).filter_by(candidate_id=cid, ad_id=ad_id).count()
+    assert n == 0
+
+
 def test_store_match_upserts():
     profile = _student_profile()
     cid = repo.store_initial_candidate(file_hash="h3", profile=profile, capabilities=[])

@@ -344,8 +344,15 @@ def target_skill_options(ad_id: int) -> dict[str, list[tuple[int, str]]]:
 
 
 def apply_base_preset(ad_id: int) -> dict[str, set[int]]:
-    """Persist the base preset as the ad's curated target set. Returns it."""
+    """Persist the base preset as the ad's curated target set. Returns it.
+
+    No-op when nothing resolves: persisting an empty set would WIPE a
+    recruiter's existing manual curation (set_target_skills deletes first),
+    so an unresolvable preset must leave the current set untouched.
+    """
     preset = base_preset_ids(ad_id)
+    if not preset["core"] and not preset["optional"]:
+        return preset
     set_target_skills(ad_id, core=list(preset["core"]), optional=list(preset["optional"]))
     return preset
 

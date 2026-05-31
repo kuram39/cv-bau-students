@@ -235,28 +235,31 @@ def store_role_answers(
     prefilled_set: set[str],
     edited_set: set[str],
 ) -> None:
-    """Upsert one RoleSpecificAnswer row per answered slot."""
+    """Replace the candidate's role answers for this ad.
+
+    Replace-semantics (delete-then-insert), NOT upsert: each submit carries
+    the full answer set, so a slot omitted this time must disappear. An upsert
+    left stale rows behind — e.g. a blank submit (`answers={}`) would keep a
+    previous run's AI-drafted answers visible in the recruiter drill-in.
+    """
     with get_session() as session:
+        session.execute(
+            RoleSpecificAnswer.__table__.delete().where(
+                (RoleSpecificAnswer.candidate_id == candidate_id)
+                & (RoleSpecificAnswer.ad_id == ad_id)
+            )
+        )
         for slot, text in answers.items():
             if not text:
                 continue
-            session.execute(
-                sqlite_insert(RoleSpecificAnswer)
-                .values(
+            session.add(
+                RoleSpecificAnswer(
                     candidate_id=candidate_id,
                     ad_id=ad_id,
                     slot=slot,
                     answer_text=text,
                     was_prefilled=(slot in prefilled_set),
                     was_edited=(slot in edited_set),
-                )
-                .on_conflict_do_update(
-                    index_elements=["candidate_id", "ad_id", "slot"],
-                    set_={
-                        "answer_text": text,
-                        "was_prefilled": (slot in prefilled_set),
-                        "was_edited": (slot in edited_set),
-                    },
                 )
             )
 
