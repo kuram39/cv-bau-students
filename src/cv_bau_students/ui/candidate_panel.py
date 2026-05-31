@@ -121,8 +121,16 @@ def _step_matches() -> None:
         st.markdown(f"**{ad.title}** — {ad.employer or '—'} · {ad.location} · {ad.level}")
         if target_match is not None:
             st.caption(_match_reasoning_line(target_match))
-        if st.button("✅ Mám zájem o tuto pozici", type="primary", key="interest_target"):
+        c1, c2 = st.columns(2)
+        if c1.button("✅ Mám zájem o tuto pozici", type="primary", key="interest_target"):
             _go_interested(result.candidate_id, ad.id)
+        if c2.button("🔎 Mám zájem o jinou nabídku", key="interest_other"):
+            express_interest(result.candidate_id, ad.id, "wait")
+            st.info(
+                "OK — tuto pozici přeskakujeme. Jakmile přibude jiná vhodná nabídka, "
+                "dáme vědět e-mailem. _(V tomto demu nabízíme jen tuto jednu pozici; "
+                "e-maily neodesíláme — informativní text.)_"
+            )
         st.markdown("---")
 
     if st.button("↩︎ Nahrát jiné CV"):
