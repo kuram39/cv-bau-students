@@ -19,6 +19,7 @@ from sqlalchemy import delete
 from cv_bau_students.config import LEVEL_CHECKLISTS_CSV, TAXONOMY_SEED_CSV
 from cv_bau_students.db import get_session, init_db
 from cv_bau_students.db_models import (
+    AdTargetSkill,
     LevelChecklist,
     Skill,
     SkillAlias,
@@ -27,9 +28,16 @@ from cv_bau_students.db_models import (
 
 
 def _truncate_taxonomy(session) -> None:
-    """Order matters — child rows first."""
+    """Order matters — child rows first.
+
+    `AdTargetSkill` has an FK to `skills.id`, so it must be cleared before
+    `Skill` — otherwise an idempotent re-seed can fail (FK-enforcing DBs) or
+    leave curated rows pointing at reused skill ids (SQLite), corrupting later
+    scoring for that ad.
+    """
     session.execute(delete(SkillHierarchy))
     session.execute(delete(SkillAlias))
+    session.execute(delete(AdTargetSkill))
     session.execute(delete(LevelChecklist))
     session.execute(delete(Skill))
 

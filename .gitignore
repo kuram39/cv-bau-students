@@ -32,3 +32,5 @@ data/fixtures/*.docx
 .esco_load_state.json
 # Optional raw ESCO ZIP dump if user downloads it later
 data/raw_esco/
+
+.claude/

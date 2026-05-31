@@ -25,6 +25,7 @@ from cv_bau_students.config import (
     WEIGHT_PERSONAL_FIT,
     WEIGHT_SKILL_FIT,
 )
+from cv_bau_students.jobads.repo import get_target_skills
 from cv_bau_students.levels.repo import bridge_plan, checklist_exists
 from cv_bau_students.models import (
     CandidateProfile,
@@ -161,13 +162,26 @@ def _apply_role_enrichment(
     (optional is where common tools like SQL land in ESCO). Capped bonus,
     base untouched — enrichment only lifts.
     """
-    if not ad.isco_code:
+    # Prefer the recruiter-curated target set (small, interpretable) over the
+    # full ESCO essential∪optional fallback. Curated can apply even without an
+    # ISCO code (recruiter picked skills directly).
+    curated = get_target_skills(ad.id) if ad.id is not None else None
+    if curated:
+        role_set = curated.get("core", set()) | curated.get("optional", set())
+        source = "curated"
+    elif ad.isco_code:
+        role_set = set(expected_skills_for_isco(ad.isco_code, "essential")) | set(
+            expected_skills_for_isco(ad.isco_code, "optional")
+        )
+        source = "isco"
+    else:
         return base, detail
-    role_set = set(expected_skills_for_isco(ad.isco_code, "essential")) | set(
-        expected_skills_for_isco(ad.isco_code, "optional")
-    )
+    # Mark the detail enriched ONLY once role_set is known non-empty — else an
+    # ISCO with no skill_industry_map rows would render a bogus "0/0 · ISCO
+    # None" coverage line (target_source set but isco_code never populated).
     if not role_set:
         return base, detail
+    detail.target_source = source
 
     evidenced = candidate_esco & role_set
     extra = evidenced - must_esco  # role skills beyond the recruiter must-haves

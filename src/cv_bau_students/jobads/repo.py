@@ -12,9 +12,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cv_bau_students.db import get_session
-from cv_bau_students.db_models import JobAdRow, JobAdSkill, Skill
+from cv_bau_students.db_models import AdTargetSkill, JobAdRow, JobAdSkill, Skill
 from cv_bau_students.models import JobAd, LanguageRequirement
-from cv_bau_students.taxonomy.repo import resolve_skill
+from cv_bau_students.taxonomy.repo import (
+    expected_skills_for_isco,
+    names_for_ids,
+    resolve_skill,
+)
 
 
 def store_ad(ad: JobAd) -> int:
@@ -232,6 +236,56 @@ def _to_pydantic(session: Session, row: JobAdRow) -> JobAd:
     )
 
 
+def get_target_skills(ad_id: int) -> dict[str, set[int]] | None:
+    """Recruiter-curated target skills for an ad → {'core': {...}, 'optional': {...}}.
+
+    Returns None when the recruiter hasn't curated a set (matcher then falls
+    back to the full ISCO essential∪optional list).
+    """
+    with get_session() as session:
+        rows = session.execute(
+            select(AdTargetSkill.skill_id, AdTargetSkill.tier).where(AdTargetSkill.ad_id == ad_id)
+        ).all()
+    if not rows:
+        return None
+    out: dict[str, set[int]] = {"core": set(), "optional": set()}
+    for skill_id, tier in rows:
+        out.setdefault(tier, set()).add(skill_id)
+    return out
+
+
+def set_target_skills(ad_id: int, *, core: list[int], optional: list[int]) -> None:
+    """Replace the curated target set for an ad. core wins on overlap."""
+    core_set = set(core)
+    optional_set = set(optional) - core_set
+    with get_session() as session:
+        session.execute(AdTargetSkill.__table__.delete().where(AdTargetSkill.ad_id == ad_id))
+        for sid in core_set:
+            session.add(AdTargetSkill(ad_id=ad_id, skill_id=sid, tier="core"))
+        for sid in optional_set:
+            session.add(AdTargetSkill(ad_id=ad_id, skill_id=sid, tier="optional"))
+
+
+def suggest_target_skills(ad_id: int) -> dict[str, list[tuple[int, str]]]:
+    """Default picker contents from the ad's ISCO occupation: ESCO essential →
+    `core`, optional → `optional`, each as sorted (skill_id, name) pairs.
+
+    Empty lists when the ad has no resolved ISCO code (recruiter then has
+    nothing to pick from — surfaced in the UI as "resolve ISCO first").
+    """
+    ad = get_ad_by_id(ad_id)
+    if ad is None or not ad.isco_code:
+        return {"core": [], "optional": []}
+    essential = expected_skills_for_isco(ad.isco_code, "essential")
+    optional = expected_skills_for_isco(ad.isco_code, "optional")
+    names = names_for_ids([*essential, *optional])
+
+    def _pairs(ids: list[int]) -> list[tuple[int, str]]:
+        return sorted(((i, names[i]) for i in ids if i in names), key=lambda p: p[1])
+
+    return {"core": _pairs(essential), "optional": _pairs(optional)}
+
+
 def resolve_ad_isco(ad_id: int) -> tuple[str | None, str | None, str]:
     """Run the role→ISCO resolver for one ad and persist the result.
 
@@ -262,11 +316,19 @@ def set_ad_isco(
     occupation_label: str | None,
     method: str | None,
 ) -> None:
-    """Overwrite an ad's ISCO fields unconditionally (None clears them)."""
+    """Overwrite an ad's ISCO fields unconditionally (None clears them).
+
+    If the ISCO code actually changes (or is cleared), any recruiter-curated
+    `AdTargetSkill` rows are dropped — they were picked from the *previous*
+    occupation's skill set, so keeping them would score against a stale role
+    (e.g. after `seed_target_demo` re-resolves the demo ad).
+    """
     with get_session() as session:
         row = session.get(JobAdRow, ad_id)
         if row is None:
             raise LookupError(f"ad_id {ad_id} not found")
+        if row.isco_code != isco_code:
+            session.execute(AdTargetSkill.__table__.delete().where(AdTargetSkill.ad_id == ad_id))
         row.isco_code = isco_code
         row.isco_occupation_label = occupation_label
         row.isco_method = method

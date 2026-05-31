@@ -185,7 +185,11 @@ class SkillFitDetail(BaseModel):
     # ESCO target-role enrichment (only when the ad resolved to an ISCO code).
     isco_code: str | None = None
     occupation_label: str | None = None
-    role_essential_total: int = 0  # |essential ESCO skills for this ISCO|
+    # Where the role skill set came from: "curated" (recruiter skill-picker,
+    # Phase B) or "isco" (full ESCO essential∪optional fallback). None = no
+    # enrichment applied.
+    target_source: str | None = None
+    role_essential_total: int = 0  # |role skill set| (curated, or ESCO essential∪optional)
     role_essential_evidenced: int = 0  # how many the candidate demonstrates
     role_essential_matched: list[str] = Field(default_factory=list)
     role_essential_missing: list[str] = Field(default_factory=list)  # capped sample

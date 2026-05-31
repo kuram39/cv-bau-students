@@ -128,8 +128,11 @@ def test_enrichment_bonus_is_capped():
 def test_no_enrichment_when_isco_has_no_role_skills():
     _seed_skills(["SQL", "Python", "Power BI", "Excel"])
     enriched = score_match(_profile(["SQL", "Python"]), [], _ad(isco_code="9999"))
-    assert enriched.skill_fit_detail.role_essential_total == 0
-    assert enriched.skill_fit_detail.bonus_applied == 0.0
+    d = enriched.skill_fit_detail
+    assert d.role_essential_total == 0
+    assert d.bonus_applied == 0.0
+    # target_source must stay unset → panel won't render a bogus "0/0 ISCO None".
+    assert d.target_source is None
 
 
 def test_no_enrichment_without_isco():
@@ -137,3 +140,23 @@ def test_no_enrichment_without_isco():
     enriched = score_match(_profile(["SQL"]), [], _ad(isco_code=None))
     assert enriched.skill_fit_detail.isco_code is None
     assert enriched.skill_fit_detail.bonus_applied == 0.0
+
+
+def test_curated_target_set_overrides_isco_default():
+    """Phase B: a recruiter-curated set is scored instead of the full ESCO list."""
+    from cv_bau_students.jobads.repo import set_target_skills, store_ad
+
+    ids = _seed_skills(["SQL", "Python", "Power BI", "Excel", "data mining", "noise1", "noise2"])
+    # ISCO default would include lots of noise; recruiter curates a tight set.
+    _seed_relation("2511", [ids["noise1"], ids["noise2"], ids["data mining"]], "essential")
+    ad_obj = _ad(isco_code="2511")
+    ad_id = store_ad(ad_obj)
+    set_target_skills(ad_id, core=[ids["data mining"]], optional=[ids["Power BI"]])
+
+    ad_obj = ad_obj.model_copy(update={"id": ad_id})
+    enriched = score_match(_profile(["SQL", "Python", "data mining"]), [], ad_obj)
+    d = enriched.skill_fit_detail
+    assert d.target_source == "curated"
+    assert d.role_essential_total == 2  # curated core+optional, NOT the ISCO essential set
+    assert "data mining" in d.role_essential_matched
+    assert d.bonus_applied == 3.0  # 1 curated skill beyond musts (data mining)

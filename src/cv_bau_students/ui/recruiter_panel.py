@@ -14,6 +14,7 @@ import json
 import streamlit as st
 
 from cv_bau_students.candidates import repo as candidates_repo
+from cv_bau_students.jobads import repo as jobads_repo
 from cv_bau_students.models import JobAd
 
 TYPE_BADGE = {
@@ -68,6 +69,8 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
         for summary in changers:
             _render_candidate_row(target_ad.id, summary)
 
+    _render_target_skill_picker(target_ad)
+
     # Collapsed job-description section at the bottom.
     with st.expander("📋 Popis pozice (rozbal pro detail inzerátu)"):
         st.markdown(f"**Must-have:** {', '.join(target_ad.must_have) or '—'}")
@@ -76,6 +79,58 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
         st.markdown(f"**Jazyky:** {langs or '—'}")
         st.markdown("**Text inzerátu:**")
         st.write(target_ad.raw_text)
+
+
+def _render_target_skill_picker(ad: JobAd) -> None:
+    """Recruiter curates the role's target skill set (Phase B).
+
+    Options come from the ad's ISCO occupation (ESCO essential → core,
+    optional → optional). The saved set drives role-coverage scoring instead
+    of the full ~500-skill ESCO list, so coverage becomes interpretable.
+    """
+    with st.expander("🎯 Cílové dovednosti pro tuto roli (editace náboráře)"):
+        sugg = jobads_repo.suggest_target_skills(ad.id)
+        if not sugg["core"] and not sugg["optional"]:
+            st.caption(
+                "Pro tento inzerát není rozpoznané ISCO povolání — není z čeho vybírat. "
+                "Spusť `resolve_ad_isco` (seed) nebo doplň ISCO kód inzerátu."
+            )
+            return
+
+        name_to_id = {name: sid for sid, name in (sugg["core"] + sugg["optional"])}
+        core_opts = [name for _, name in sugg["core"]]
+        opt_opts = [name for _, name in sugg["optional"]]
+
+        current = jobads_repo.get_target_skills(ad.id) or {"core": set(), "optional": set()}
+        id_to_name = {sid: name for name, sid in name_to_id.items()}
+        core_default = [id_to_name[i] for i in current.get("core", set()) if i in id_to_name]
+        opt_default = [id_to_name[i] for i in current.get("optional", set()) if i in id_to_name]
+
+        st.caption(
+            "Vyber dovednosti, které pro tuto roli skutečně vyžaduješ. "
+            "**Core** = klíčové, **Optional** = výhodou. Skóre uchazečů se počítá "
+            "vůči tomuto výběru."
+        )
+        chosen_core = st.multiselect("Core dovednosti", core_opts, default=core_default)
+        chosen_opt = st.multiselect("Optional dovednosti", opt_opts, default=opt_default)
+        if st.button("💾 Uložit cílové dovednosti", key=f"save_target_{ad.id}"):
+            jobads_repo.set_target_skills(
+                ad.id,
+                core=[name_to_id[n] for n in chosen_core if n in name_to_id],
+                optional=[name_to_id[n] for n in chosen_opt if n in name_to_id],
+            )
+            if not chosen_core and not chosen_opt:
+                # Empty selection = no curation → matcher uses the full ESCO
+                # role set. Say so, rather than implying scoring uses "nothing".
+                st.info(
+                    "Prázdný výběr — kurátorská sada zrušena. Skóre použije výchozí "
+                    "ESCO sadu role (essential+optional). Přepočítej skóre."
+                )
+            else:
+                st.success(
+                    f"Uloženo: {len(chosen_core)} core + {len(chosen_opt)} optional. "
+                    "Přepočítej skóre (re-run analýzy / seed) pro projevení změny."
+                )
 
 
 def _render_column(ad_id: int, *, kind: str) -> None:
@@ -186,14 +241,19 @@ def _render_skill_fit_detail(d) -> None:
     if d.missing_must:
         st.caption(f"❌ Chybí must: {', '.join(d.missing_must)}")
 
-    if d.isco_code:
-        label = d.occupation_label or "—"
+    # Legacy match rows (pre-target_source) carry isco_code/coverage but no
+    # target_source — fall back to "isco" so their role coverage still shows
+    # without needing every stored match recomputed.
+    if d.target_source or d.isco_code:
         bonus = f" · bonus +{d.bonus_applied:.0f}" if d.bonus_applied else ""
+        if d.target_source == "curated":
+            src = "náborářem vybrané cílové dovednosti"
+        else:
+            label = d.occupation_label or "—"
+            src = f"ESCO role {label} (ISCO {d.isco_code}, essential+optional)"
         st.caption(
-            f"🎯 Role: {label} (ISCO {d.isco_code}) — evidováno "
-            f"{d.role_essential_evidenced}/{d.role_essential_total} "
-            f"role-relevantních ESCO skills (essential+optional)"
-            f"{bonus}"
+            f"🎯 Role coverage — evidováno "
+            f"{d.role_essential_evidenced}/{d.role_essential_total} · {src}{bonus}"
         )
         if d.role_essential_matched:
             st.caption("🟢 Role-essential prokázané: " + " · ".join(d.role_essential_matched))
