@@ -79,6 +79,19 @@ def test_hard_filter_passes_when_language_level_meets_requirement():
     assert passes_hard_filter(profile, ad) is True
 
 
+def test_hard_filter_reasons_names_unmet_language():
+    from cv_bau_students.matcher.hard_filter import hard_filter_reasons
+
+    profile = _student_profile().model_copy(
+        update={"languages": [LanguageRequirement(language="English", min_level="A2")]}
+    )
+    ad = _data_analyst_junior_ad()  # requires English B2
+    reasons = hard_filter_reasons(profile, ad)
+    assert reasons == ["English B2"]
+    # Meeting the requirement → no reasons, passes.
+    assert hard_filter_reasons(_student_profile(), ad) == []
+
+
 def test_score_match_skill_fit_is_coverage_of_target_set():
     profile = _student_profile()
     ad = _store_and_fetch_ad(_data_analyst_junior_ad())

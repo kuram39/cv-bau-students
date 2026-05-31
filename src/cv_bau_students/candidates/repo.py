@@ -170,6 +170,37 @@ def store_initial_candidate(
     return candidate_id
 
 
+def replace_capabilities(candidate_id: int, capabilities: Iterable[TranslatedCapability]) -> None:
+    """Replace a candidate's stored translated capabilities.
+
+    Used after `submit_role_specific` re-translates the profile enriched with
+    the questionnaire answers: the answer-derived capabilities must be
+    PERSISTED, else `rescore_ad` (and the recruiter drill-in) read the original
+    CV-only capabilities and the candidate loses credit for evidence they added
+    in the questionnaire whenever the recruiter edits target skills.
+    """
+    with get_session() as session:
+        session.execute(
+            TranslatedCapabilityRow.__table__.delete().where(
+                TranslatedCapabilityRow.candidate_id == candidate_id
+            )
+        )
+        for cap in capabilities:
+            session.add(
+                TranslatedCapabilityRow(
+                    candidate_id=candidate_id,
+                    skill_canonical=cap.skill,
+                    evidence_quote=cap.evidence_quote,
+                    confidence=cap.confidence,
+                    caveat=cap.caveat,
+                    source_type=cap.source_type,
+                    relevance=getattr(cap, "relevance", "direct"),
+                    esco_term=cap.esco_term,
+                    esco_skill_id=cap.skill_id,
+                )
+            )
+
+
 def record_interest(candidate_id: int, ad_id: int, status: str) -> None:
     """Insert or update a CandidateInterest row (one per candidate × ad)."""
     if status not in ("interested", "wait"):

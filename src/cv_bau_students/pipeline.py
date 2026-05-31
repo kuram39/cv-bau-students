@@ -287,6 +287,10 @@ def submit_role_specific(
         profile = profile.model_copy(update={"summary": merged})
 
     translated = translate(profile)
+    # Persist the answer-enriched capabilities so rescore_ad + the recruiter
+    # drill-in stay consistent with the score we compute here (otherwise they
+    # fall back to the CV-only capabilities and drop questionnaire evidence).
+    candidates_repo.replace_capabilities(candidate_id, translated)
     ad = get_ad_by_id(ad_id)
     if ad is None:
         raise LookupError(f"ad_id {ad_id} not found")

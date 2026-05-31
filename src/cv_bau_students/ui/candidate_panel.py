@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from cv_bau_students.matcher.hard_filter import hard_filter_reasons
 from cv_bau_students.models import GenericResult, InterestResult, JobAd
 from cv_bau_students.pipeline import (
     express_interest,
@@ -120,12 +121,26 @@ def _step_matches() -> None:
     # Preview line for the target ad: reuse its match if the generic pass
     # surfaced it; otherwise show a neutral line (the recruiter view re-scores).
     target_match = next((m for m in result.matches if m.ad_id == ad.id), None)
+    # Hard KO (language level) — gate interest so ineligible applicants don't
+    # land in the recruiter view via the direct submit path.
+    ko_reasons = hard_filter_reasons(result.profile, ad)
     with st.container():
         st.markdown(f"**{ad.title}** — {ad.employer or '—'} · {ad.location} · {ad.level}")
         if target_match is not None:
             st.caption(_match_reasoning_line(target_match))
+        if ko_reasons:
+            st.error(
+                "Nesplňuješ tvrdé požadavky pozice (jazyková úroveň): "
+                + ", ".join(ko_reasons)
+                + ". Přihlášku na tuto pozici nelze odeslat."
+            )
         c1, c2 = st.columns(2)
-        if c1.button("✅ Mám zájem o tuto pozici", type="primary", key="interest_target"):
+        if c1.button(
+            "✅ Mám zájem o tuto pozici",
+            type="primary",
+            key="interest_target",
+            disabled=bool(ko_reasons),
+        ):
             _go_interested(result.candidate_id, ad.id)
         if c2.button("🔎 Mám zájem o jinou nabídku", key="interest_other"):
             express_interest(result.candidate_id, ad.id, "wait")

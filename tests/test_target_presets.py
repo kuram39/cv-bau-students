@@ -19,7 +19,7 @@ from cv_bau_students.jobads.repo import (
     store_ad,
     target_skill_options,
 )
-from cv_bau_students.models import CandidateProfile, JobAd
+from cv_bau_students.models import CandidateProfile, JobAd, TranslatedCapability
 
 
 def _seed_esco(names: list[str]) -> dict[str, int]:
@@ -131,6 +131,48 @@ def test_options_curated_tier_wins_over_isco_tier():
     opt_pool = {i for i, _ in opts["optional"]}
     assert ids["machine learning"] in opt_pool
     assert ids["machine learning"] not in core_pool
+
+
+def test_rescore_uses_persisted_questionnaire_capabilities():
+    """C: capabilities persisted after the questionnaire (replace_capabilities)
+    must survive a rescore — the candidate keeps credit for answer-derived
+    evidence when the recruiter edits target skills."""
+    ids = _seed_esco(["SQL", "Power BI"])
+    ad_id = _store_ad_with_isco(_ad(must_have=["SQL"], nice_to_have=[]), "2511")
+    from cv_bau_students.jobads.repo import set_target_skills
+
+    set_target_skills(ad_id, core=[ids["SQL"], ids["Power BI"]], optional=[])
+
+    profile = CandidateProfile(
+        candidate_type="student", language="en", explicit_skills=["SQL"], summary="s"
+    )
+    cid = cr.store_initial_candidate(file_hash="hq", profile=profile, capabilities=[])
+    cr.record_interest(cid, ad_id, "interested")
+
+    # Before answers: covers only SQL → 1/2.
+    from cv_bau_students.jobads.repo import get_ad_by_id
+    from cv_bau_students.matcher.score import score_match
+
+    cr.store_match(cid, ad_id, match=score_match(profile, [], get_ad_by_id(ad_id)))
+    assert cr.get_candidate_detail(cid, ad_id).match.skill_fit == 50.0
+
+    # Questionnaire surfaced Power BI evidence → persist enriched capabilities.
+    cr.replace_capabilities(
+        cid,
+        [
+            TranslatedCapability(
+                skill="Power BI",
+                evidence_quote="dashboard z dotazníku",
+                confidence=0.8,
+                source_type="other",
+                skill_id=ids["Power BI"],
+            )
+        ],
+    )
+    # Recruiter edits target skills → rescore. Evidence must persist → 2/2.
+    n = cr.rescore_ad(ad_id)
+    assert n == 1
+    assert cr.get_candidate_detail(cid, ad_id).match.skill_fit == 100.0
 
 
 def test_rescore_ad_recomputes_after_target_change():
