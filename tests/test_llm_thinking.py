@@ -71,3 +71,21 @@ def test_thinking_block_does_not_corrupt_json_parse():
         out = llm.call_json("prompt", think=True)
     assert out == {"a": 1, "b": 2}
     assert json.dumps(out)  # round-trips
+
+
+def test_no_text_block_raises_diagnostic_error():
+    """Response with no text block → error names stop_reason + block types,
+    not an empty 'First 500 chars' blank."""
+    import pytest
+
+    msg = SimpleNamespace(
+        content=[SimpleNamespace(type="thinking", thinking="...")],
+        stop_reason="max_tokens",
+    )
+    client = _patched_client(msg)
+    with patch.object(llm, "_client", return_value=client):
+        with pytest.raises(ValueError, match="no text to parse") as exc:
+            llm.call_json("prompt")
+    text = str(exc.value)
+    assert "stop_reason='max_tokens'" in text
+    assert "thinking" in text

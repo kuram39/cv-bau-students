@@ -89,6 +89,17 @@ def call_json(prompt: str, *, max_tokens: int = LLM_MAX_TOKENS, think: bool = Fa
     msg = _client().messages.create(**kwargs)
     raw = "".join(block.text for block in msg.content if getattr(block, "type", None) == "text")
     payload = _strip_fences(raw)
+    if not payload:
+        # No text block at all → the useless "" error. Surface what actually
+        # came back so the cause is diagnosable: stop_reason="max_tokens"
+        # (budget too small / consumed by thinking), "refusal", or a response
+        # carrying only non-text blocks.
+        block_types = [getattr(b, "type", None) for b in msg.content]
+        raise ValueError(
+            "LLM returned no text to parse "
+            f"(model={LLM_MODEL}, stop_reason={getattr(msg, 'stop_reason', None)!r}, "
+            f"blocks={block_types}, max_tokens={kwargs['max_tokens']})."
+        )
     try:
         return json.loads(payload)
     except json.JSONDecodeError as e:
