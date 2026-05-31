@@ -141,6 +141,18 @@ def run_seed(target_title: str = "Datový analytik") -> int:
     isco_code, isco_label, isco_method = resolve_ad_isco(ad.id)
     print(f"  ISCO: {isco_code} ({isco_label}) via {isco_method}")
 
+    # Apply the base-skill preset so the demo's coverage headline is meaningful
+    # out of the box (recruiter can still edit it in the UI skill-picker). The
+    # preset is candidate-aligned, so every applicant is scored on the same
+    # base set — the comparator between students and experienced.
+    from cv_bau_students.jobads.repo import apply_base_preset
+
+    preset = apply_base_preset(ad.id)
+    print(
+        f"  base preset: {len(preset['core'])} core + {len(preset['optional'])} optional "
+        f"target skills (curated set for coverage scoring)"
+    )
+
     # Refresh the ad (employer/skills/isco changed) for the Q generator.
     ad = find_ad_by_title_substring(target_title)
 

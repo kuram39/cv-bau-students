@@ -297,6 +297,36 @@ def store_match(
             existing.skill_fit_detail_json = detail_json
 
 
+def rescore_ad(ad_id: int) -> int:
+    """Re-run the deterministic matcher for every candidate with a Match on
+    this ad and upsert the new scores. NO LLM — `score_match` is pure Python,
+    so the recruiter's target-skill edit is reflected instantly and for free.
+
+    The LLM reasoning text is NOT touched (`store_match` never writes it); a
+    stale verdict stays until the candidate re-submits. Returns the count
+    re-scored.
+    """
+    from cv_bau_students.jobads.repo import get_ad_by_id
+    from cv_bau_students.matcher.score import score_match
+
+    ad = get_ad_by_id(ad_id)
+    if ad is None:
+        return 0
+    with get_session() as session:
+        cand_ids = list(
+            session.execute(select(Match.candidate_id).where(Match.ad_id == ad_id)).scalars().all()
+        )
+    n = 0
+    for cid in cand_ids:
+        detail = get_candidate_detail(cid, ad_id)
+        if detail is None:
+            continue
+        match = score_match(detail.profile, detail.capabilities or [], ad)
+        store_match(cid, ad_id, match=match)
+        n += 1
+    return n
+
+
 # --- Recruiter-facing read paths --------------------------------------------
 
 

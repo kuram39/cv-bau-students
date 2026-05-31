@@ -38,6 +38,7 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
         f"{target_ad.location} · {target_ad.remote_mode}"
     )
     _render_job_description(target_ad)
+    _render_target_skill_picker(target_ad)
 
     stats = candidates_repo.stats_for_ad(target_ad.id)
     if stats["total"]:
@@ -70,8 +71,6 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
         for summary in changers:
             _render_candidate_row(target_ad.id, summary)
 
-    _render_target_skill_picker(target_ad)
-
 
 def _render_job_description(target_ad: JobAd) -> None:
     """Collapsed job-description detail, shown right under the ad header."""
@@ -85,35 +84,58 @@ def _render_job_description(target_ad: JobAd) -> None:
 
 
 def _render_target_skill_picker(ad: JobAd) -> None:
-    """Recruiter curates the role's target skill set (Phase B).
+    """Recruiter curates the role's base-case target skill set.
 
-    Options come from the ad's ISCO occupation (ESCO essential → core,
-    optional → optional). The saved set drives role-coverage scoring instead
-    of the full ~500-skill ESCO list, so coverage becomes interpretable.
+    This is THE comparator: the recruiter picks the skills that matter for the
+    position (shared base for students and experienced alike), and everyone is
+    scored on coverage of that set — not on years of experience. A one-click
+    **base preset** seeds a sensible starting set; the recruiter then tweaks.
+
+    Options pool = ISCO occupation skills ∪ the ad's must/nice ∪ the preset,
+    all candidate-aligned (ESCO ids), so saving a skill actually scores.
+    Saving (or applying the preset) re-scores every candidate immediately —
+    deterministic, no LLM.
     """
-    with st.expander("🎯 Cílové dovednosti pro tuto roli (editace náboráře)"):
-        sugg = jobads_repo.suggest_target_skills(ad.id)
-        if not sugg["core"] and not sugg["optional"]:
+    with st.expander("🎯 Cílové dovednosti pro tuto roli (editace náboráře)", expanded=True):
+        st.caption(
+            "Vyber dovednosti, které pro tuto roli skutečně vyžaduješ — to je "
+            "**základní porovnávací osa** mezi studenty a experienced. **Core** = klíčové, "
+            "**Optional** = výhodou. Skóre uchazečů = pokrytí tohoto výběru."
+        )
+
+        if st.button("✨ Načíst doporučené base dovednosti", key=f"preset_{ad.id}"):
+            preset = jobads_repo.apply_base_preset(ad.id)
+            n = candidates_repo.rescore_ad(ad.id)
+            if preset["core"] or preset["optional"]:
+                st.success(
+                    f"Base preset uložen: {len(preset['core'])} core + "
+                    f"{len(preset['optional'])} optional. Přepočítáno {n} kandidátů."
+                )
+                st.rerun()
+            else:
+                st.warning(
+                    "Pro tuto pozici nešlo z inzerátu/ISCO odvodit žádné rozpoznané "
+                    "base dovednosti. Vyber je ručně níže."
+                )
+
+        opts = jobads_repo.target_skill_options(ad.id)
+        if not opts["core"] and not opts["optional"]:
             st.caption(
-                "Pro tento inzerát není rozpoznané ISCO povolání — není z čeho vybírat. "
-                "Spusť `resolve_ad_isco` (seed) nebo doplň ISCO kód inzerátu."
+                "Pro tento inzerát není rozpoznané ISCO povolání ani rozpoznané "
+                "dovednosti — není z čeho vybírat. Spusť `resolve_ad_isco` (seed) "
+                "nebo doplň ISCO kód inzerátu."
             )
             return
 
-        name_to_id = {name: sid for sid, name in (sugg["core"] + sugg["optional"])}
-        core_opts = [name for _, name in sugg["core"]]
-        opt_opts = [name for _, name in sugg["optional"]]
+        name_to_id = {name: sid for sid, name in (opts["core"] + opts["optional"])}
+        core_opts = [name for _, name in opts["core"]]
+        opt_opts = [name for _, name in opts["optional"]]
 
         current = jobads_repo.get_target_skills(ad.id) or {"core": set(), "optional": set()}
         id_to_name = {sid: name for name, sid in name_to_id.items()}
         core_default = [id_to_name[i] for i in current.get("core", set()) if i in id_to_name]
         opt_default = [id_to_name[i] for i in current.get("optional", set()) if i in id_to_name]
 
-        st.caption(
-            "Vyber dovednosti, které pro tuto roli skutečně vyžaduješ. "
-            "**Core** = klíčové, **Optional** = výhodou. Skóre uchazečů se počítá "
-            "vůči tomuto výběru."
-        )
         chosen_core = st.multiselect("Core dovednosti", core_opts, default=core_default)
         chosen_opt = st.multiselect("Optional dovednosti", opt_opts, default=opt_default)
         if st.button("💾 Uložit cílové dovednosti", key=f"save_target_{ad.id}"):
@@ -122,18 +144,20 @@ def _render_target_skill_picker(ad: JobAd) -> None:
                 core=[name_to_id[n] for n in chosen_core if n in name_to_id],
                 optional=[name_to_id[n] for n in chosen_opt if n in name_to_id],
             )
+            n = candidates_repo.rescore_ad(ad.id)
             if not chosen_core and not chosen_opt:
                 # Empty selection = no curation → matcher falls back to the ad's
                 # must + nice-to-have as the coverage target.
                 st.info(
                     "Prázdný výběr — kurátorská sada zrušena. Skóre použije "
-                    "must + nice-to-have z inzerátu. Přepočítej skóre."
+                    f"must + nice-to-have z inzerátu. Přepočítáno {n} kandidátů."
                 )
             else:
                 st.success(
                     f"Uloženo: {len(chosen_core)} core + {len(chosen_opt)} optional. "
-                    "Přepočítej skóre (re-run analýzy / seed) pro projevení změny."
+                    f"Přepočítáno {n} kandidátů."
                 )
+            st.rerun()
 
 
 def _render_column(ad_id: int, *, kind: str) -> None:

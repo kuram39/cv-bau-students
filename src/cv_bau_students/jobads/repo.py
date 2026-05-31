@@ -18,6 +18,7 @@ from cv_bau_students.taxonomy.repo import (
     expected_skills_for_isco,
     names_for_ids,
     resolve_skill,
+    resolve_skill_esco,
 )
 
 
@@ -284,6 +285,69 @@ def suggest_target_skills(ad_id: int) -> dict[str, list[tuple[int, str]]]:
         return sorted(((i, names[i]) for i in ids if i in names), key=lambda p: p[1])
 
     return {"core": _pairs(essential), "optional": _pairs(optional)}
+
+
+def _resolve_terms(names: list[str]) -> list[int]:
+    """Resolve display/English skill terms to candidate-aligned ESCO ids
+    (same resolver the candidate side uses → coverage actually matches).
+    Unresolvable terms (e.g. proprietary tools absent from ESCO) drop out."""
+    out: list[int] = []
+    for n in names:
+        r = resolve_skill_esco(n)
+        if r:
+            out.append(r[0])
+    return out
+
+
+def base_preset_ids(ad_id: int) -> dict[str, set[int]]:
+    """The position's base-case skill set, candidate-aligned (ESCO ids).
+
+    Priority: an occupation preset keyed on the ad's ISCO code
+    (`roles.presets`); else the ad's own must_have → core / nice_to_have →
+    optional. Returns {'core': {...}, 'optional': {...}} (possibly empty).
+    """
+    from cv_bau_students.roles.presets import preset_terms_for_isco
+
+    ad = get_ad_by_id(ad_id)
+    if ad is None:
+        return {"core": set(), "optional": set()}
+    terms = preset_terms_for_isco(ad.isco_code)
+    if terms is None:
+        terms = {"core": list(ad.must_have), "optional": list(ad.nice_to_have)}
+    core = set(_resolve_terms(terms.get("core", [])))
+    optional = set(_resolve_terms(terms.get("optional", []))) - core
+    return {"core": core, "optional": optional}
+
+
+def target_skill_options(ad_id: int) -> dict[str, list[tuple[int, str]]]:
+    """Picker option pool = ISCO essential/optional ∪ the ad's must/nice
+    (ESCO-resolved) ∪ the base preset. Ensures preset + ad-requirement skills
+    are selectable/displayable even when they aren't in the raw ISCO map, and
+    that they sit in the candidate-aligned namespace so saving them scores."""
+    sugg = suggest_target_skills(ad_id)
+    preset = base_preset_ids(ad_id)
+    ad = get_ad_by_id(ad_id)
+    extra_core = set(preset["core"])
+    extra_opt = set(preset["optional"])
+    if ad is not None:
+        extra_core |= set(_resolve_terms(list(ad.must_have)))
+        extra_opt |= set(_resolve_terms(list(ad.nice_to_have)))
+
+    core_ids = {i for i, _ in sugg["core"]} | extra_core
+    opt_ids = ({i for i, _ in sugg["optional"]} | extra_opt) - core_ids
+    namemap = names_for_ids([*core_ids, *opt_ids])
+
+    def _pairs(ids: set[int]) -> list[tuple[int, str]]:
+        return sorted(((i, namemap[i]) for i in ids if i in namemap), key=lambda p: p[1])
+
+    return {"core": _pairs(core_ids), "optional": _pairs(opt_ids)}
+
+
+def apply_base_preset(ad_id: int) -> dict[str, set[int]]:
+    """Persist the base preset as the ad's curated target set. Returns it."""
+    preset = base_preset_ids(ad_id)
+    set_target_skills(ad_id, core=list(preset["core"]), optional=list(preset["optional"]))
+    return preset
 
 
 def resolve_ad_isco(ad_id: int) -> tuple[str | None, str | None, str]:
