@@ -193,21 +193,22 @@ def _confidence_label(band: float) -> str:
 
 
 def _render_candidate_row(ad_id: int, summary) -> None:
+    """One compact, collapsible list row per candidate. The header line is the
+    whole scannable summary (badge · name · coverage % · confidence); progress
+    bar, top skills, the AI headline and the full drill-in live inside the
+    expander so the page reads as a list, not a stack of blocks."""
     badge = TYPE_BADGE.get(summary.kind, "❓")
-    header = (
-        f"{badge} · {summary.display_name} · "
-        f"**{summary.total:.0f} %** · spolehlivost překladu CV: "
-        f"{_confidence_label(summary.confidence_band)}"
+    label = (
+        f"{badge} · {summary.display_name} · {summary.total:.0f} % · "
+        f"spolehlivost: {_confidence_label(summary.confidence_band)}"
     )
-    with st.container():
-        st.markdown(header)
+    with st.expander(label):
         st.progress(min(1.0, summary.total / 100))
         if summary.top_skills:
             st.caption("🏷 " + " · ".join(summary.top_skills))
         if summary.headline:
             st.caption(summary.headline)
-        with st.expander("🔍 Detail kandidáta"):
-            _render_detail(ad_id, summary.candidate_id)
+        _render_detail(ad_id, summary.candidate_id)
         st.markdown("---")
 
 
