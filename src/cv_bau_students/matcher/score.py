@@ -38,6 +38,7 @@ from cv_bau_students.models import (
 from cv_bau_students.taxonomy.repo import (
     expected_skills_for_isco,
     names_for_ids,
+    normalize,
     resolve_many_esco,
     resolve_skill,
     resolve_skill_esco,
@@ -248,20 +249,36 @@ def _bridge_fit(gaps: list[GapItem], *, has_rubric: bool) -> float | None:
     return max(0.0, 100.0 - (total_months / 24.0) * 100.0)
 
 
+_PERSONAL_FIT_STOPWORDS = frozenset(
+    # tiny cs+en function-word set; keeps content tokens only
+    "a i o u v k s z na se si je to the of and to in for with on at as by".split()
+)
+
+
 def _personal_fit(profile: CandidateProfile, ad: JobAd) -> float:
-    """Lexical overlap between the candidate's summary + target_domains and
-    the ad's raw_text. Cheap proxy — production swaps in an LLM scoring
+    """Content-token overlap between the candidate's summary + target_domains
+    and the ad's raw_text. Cheap proxy — production swaps in an LLM scoring
     call. Returns 0..100.
+
+    Token-set overlap (not substring `in`): substring matching fired "SQL"
+    inside "NoSQL" and missed "datová" vs "data"; tokenizing on the
+    diacritics-stripped `normalize()` form fixes both. Short tokens + a small
+    stopword set are dropped so only meaningful overlap scores.
     """
-    haystack = ad.raw_text.lower()
-    needles = []
-    if profile.summary:
-        needles.append(profile.summary.lower())
-    needles.extend(d.lower().replace("-", " ") for d in profile.target_domains)
+
+    def _content_tokens(text: str) -> set[str]:
+        return {
+            t for t in normalize(text).split() if len(t) > 2 and t not in _PERSONAL_FIT_STOPWORDS
+        }
+
+    haystack = _content_tokens(ad.raw_text)
+    needles = _content_tokens(profile.summary or "")
+    for domain in profile.target_domains:
+        needles |= _content_tokens(domain.replace("-", " "))
     if not needles:
         return 40.0  # neutral baseline when the candidate told us nothing
-    hits = sum(1 for needle in needles if needle and needle in haystack)
-    return min(100.0, 40.0 + 25.0 * hits)
+    overlap = len(needles & haystack)
+    return min(100.0, 40.0 + 8.0 * overlap)
 
 
 def _confidence_band(capabilities: list[TranslatedCapability]) -> float:

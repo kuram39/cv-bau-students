@@ -69,6 +69,22 @@ def test_resolve_unknown_returns_none():
     assert resolve_skill("Quantum Llama Whisperer") is None
 
 
+def test_resolve_skill_diacritics_insensitive_fallback():
+    """A CV without háčky/čárky still resolves to the diacritic canonical."""
+    from cv_bau_students.taxonomy.repo import _seed_skill_index
+
+    with get_session() as session:
+        s = Skill(canonical_name="datové modelování")
+        session.add(s)
+        session.flush()
+        sid = s.id
+    _seed_skill_index.cache_clear()
+    match = resolve_skill("datove modelovani")  # no diacritics
+    assert match is not None
+    assert match[0] == sid
+    assert match[1] == "datové modelování"
+
+
 def test_descendants_of_javascript_includes_react():
     canonical_to_id = _seed()
     canonical_for_alias.cache_clear()

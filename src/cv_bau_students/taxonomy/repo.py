@@ -102,10 +102,42 @@ def resolve_skill(name: str) -> tuple[int, str] | None:
             .join(Skill, Skill.id == SkillAlias.canonical_id)
             .where(SkillAlias.alias.ilike(lowered))
         ).first()
-        if alias_row is None:
-            return None
-        _, skill = alias_row
-        return skill.id, skill.canonical_name
+        if alias_row is not None:
+            _, skill = alias_row
+            return skill.id, skill.canonical_name
+
+    # Diacritics-insensitive fallback: `ilike` does NOT strip háčky/čárky, so a
+    # CV writing "datove modelovani" (no diacritics) misses the canonical
+    # "datové modelování". Match on the normalized form via a cached index.
+    sid = _seed_skill_index().get(normalize(stripped))
+    if sid is None:
+        return None
+    with get_session() as session:
+        skill = session.get(Skill, sid)
+        return (skill.id, skill.canonical_name) if skill else None
+
+
+@lru_cache(maxsize=1)
+def _seed_skill_index() -> dict[str, int]:
+    """Normalized label → skill_id over ALL skills (canonical cs/en) + aliases.
+
+    Powers the diacritics-insensitive fallback in `resolve_skill` (seed-space
+    must/nice/bridge). Not ESCO-restricted — unlike `_esco_index`. First writer
+    wins per key (canonicals before aliases)."""
+    index: dict[str, int] = {}
+    with get_session() as session:
+        for sid, cs, en in session.execute(
+            select(Skill.id, Skill.canonical_name, Skill.canonical_name_en)
+        ).all():
+            for label in (cs, en):
+                key = normalize(label)
+                if key:
+                    index.setdefault(key, sid)
+        for alias, cid in session.execute(select(SkillAlias.alias, SkillAlias.canonical_id)).all():
+            key = normalize(alias)
+            if key:
+                index.setdefault(key, cid)
+    return index
 
 
 @lru_cache(maxsize=1)
