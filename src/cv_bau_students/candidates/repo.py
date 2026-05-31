@@ -503,16 +503,24 @@ def _load_latest_profile(session, candidate_id: int) -> CandidateProfile:
 
 
 def _load_match_reasoning(session, candidate_id: int, ad_id: int) -> str | None:
-    """Match.reasoning isn't a stored column today — Phase 7's
-    reasoning_cache table is the canonical place. Query there."""
+    """reasoning_cache may hold MULTIPLE rows per (candidate, ad) — the key
+    includes prompt_hash, so each re-run with a different prompt adds one.
+    Take the most recent; scalar_one_or_none() would raise MultipleResultsFound."""
     from cv_bau_students.db_models import ReasoningCache
 
-    row = session.execute(
-        select(ReasoningCache).where(
-            ReasoningCache.candidate_id == candidate_id,
-            ReasoningCache.ad_id == ad_id,
+    row = (
+        session.execute(
+            select(ReasoningCache)
+            .where(
+                ReasoningCache.candidate_id == candidate_id,
+                ReasoningCache.ad_id == ad_id,
+            )
+            .order_by(ReasoningCache.created_at.desc())
+            .limit(1)
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .first()
+    )
     return row.rationale if row else None
 
 

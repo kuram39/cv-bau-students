@@ -229,6 +229,34 @@ def test_get_candidates_for_ad_only_returns_interested_with_match():
     assert rows[0].display_name == "Anna"
 
 
+def test_get_candidates_for_ad_survives_duplicate_reasoning_cache():
+    """reasoning_cache keys on (candidate, ad, prompt_hash) → re-runs with a
+    different prompt add rows. _load_match_reasoning must take the latest, not
+    raise MultipleResultsFound."""
+    from cv_bau_students.db import get_session
+    from cv_bau_students.db_models import ReasoningCache
+
+    ad_id = _make_ad()
+    cid = repo.store_initial_candidate(
+        file_hash="h-dupcache", profile=_student_profile("Anna"), capabilities=[]
+    )
+    repo.record_interest(cid, ad_id, "interested")
+    repo.store_match(cid, ad_id, match=_make_match(ad_id, total=75.0))
+
+    with get_session() as session:
+        session.add(
+            ReasoningCache(candidate_id=cid, ad_id=ad_id, prompt_hash="p1", rationale="Starší. X.")
+        )
+        session.add(
+            ReasoningCache(candidate_id=cid, ad_id=ad_id, prompt_hash="p2", rationale="Novější. Y.")
+        )
+
+    rows = repo.get_candidates_for_ad(ad_id)  # must not raise
+    assert len(rows) == 1
+    detail = repo.get_candidate_detail(cid, ad_id)  # same path
+    assert detail is not None
+
+
 def test_get_candidates_for_ad_filters_by_kind():
     ad_id = _make_ad()
     cid_stud = repo.store_initial_candidate(
