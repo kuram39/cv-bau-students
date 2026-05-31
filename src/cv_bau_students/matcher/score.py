@@ -168,16 +168,20 @@ def _apply_role_enrichment(
     curated = get_target_skills(ad.id) if ad.id is not None else None
     if curated:
         role_set = curated.get("core", set()) | curated.get("optional", set())
-        detail.target_source = "curated"
+        source = "curated"
     elif ad.isco_code:
         role_set = set(expected_skills_for_isco(ad.isco_code, "essential")) | set(
             expected_skills_for_isco(ad.isco_code, "optional")
         )
-        detail.target_source = "isco"
+        source = "isco"
     else:
         return base, detail
+    # Mark the detail enriched ONLY once role_set is known non-empty — else an
+    # ISCO with no skill_industry_map rows would render a bogus "0/0 · ISCO
+    # None" coverage line (target_source set but isco_code never populated).
     if not role_set:
         return base, detail
+    detail.target_source = source
 
     evidenced = candidate_esco & role_set
     extra = evidenced - must_esco  # role skills beyond the recruiter must-haves

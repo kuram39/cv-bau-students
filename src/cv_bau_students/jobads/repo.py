@@ -316,11 +316,19 @@ def set_ad_isco(
     occupation_label: str | None,
     method: str | None,
 ) -> None:
-    """Overwrite an ad's ISCO fields unconditionally (None clears them)."""
+    """Overwrite an ad's ISCO fields unconditionally (None clears them).
+
+    If the ISCO code actually changes (or is cleared), any recruiter-curated
+    `AdTargetSkill` rows are dropped — they were picked from the *previous*
+    occupation's skill set, so keeping them would score against a stale role
+    (e.g. after `seed_target_demo` re-resolves the demo ad).
+    """
     with get_session() as session:
         row = session.get(JobAdRow, ad_id)
         if row is None:
             raise LookupError(f"ad_id {ad_id} not found")
+        if row.isco_code != isco_code:
+            session.execute(AdTargetSkill.__table__.delete().where(AdTargetSkill.ad_id == ad_id))
         row.isco_code = isco_code
         row.isco_occupation_label = occupation_label
         row.isco_method = method

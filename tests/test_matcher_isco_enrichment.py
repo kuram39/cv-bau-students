@@ -128,8 +128,11 @@ def test_enrichment_bonus_is_capped():
 def test_no_enrichment_when_isco_has_no_role_skills():
     _seed_skills(["SQL", "Python", "Power BI", "Excel"])
     enriched = score_match(_profile(["SQL", "Python"]), [], _ad(isco_code="9999"))
-    assert enriched.skill_fit_detail.role_essential_total == 0
-    assert enriched.skill_fit_detail.bonus_applied == 0.0
+    d = enriched.skill_fit_detail
+    assert d.role_essential_total == 0
+    assert d.bonus_applied == 0.0
+    # target_source must stay unset → panel won't render a bogus "0/0 ISCO None".
+    assert d.target_source is None
 
 
 def test_no_enrichment_without_isco():
