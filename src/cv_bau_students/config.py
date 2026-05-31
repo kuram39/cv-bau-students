@@ -32,8 +32,8 @@ LLM_MAX_TOKENS = 4096
 # blocks=['thinking']). So we cap thinking explicitly via `budget_tokens` and
 # size max_tokens to leave guaranteed answer room: 12000 total = up to 8000
 # thinking + ≥4000 for the JSON. Stays under the ~16K non-streaming threshold.
-LLM_THINK_MAX_TOKENS = 12000
-LLM_THINK_BUDGET = 8000  # thinking cap; must be < LLM_THINK_MAX_TOKENS
+LLM_THINK_MAX_TOKENS = 8000
+LLM_THINK_BUDGET = 4000  # thinking cap; must be < LLM_THINK_MAX_TOKENS (leaves ≥4000 for answer)
 
 # --- Pipeline budgets ---
 COMPLETION_MAX_ROUNDS = 2
