@@ -37,6 +37,7 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
         f"**{target_ad.employer or '—'}** · {target_ad.level} · "
         f"{target_ad.location} · {target_ad.remote_mode}"
     )
+    _render_job_description(target_ad)
 
     stats = candidates_repo.stats_for_ad(target_ad.id)
     if stats["total"]:
@@ -71,7 +72,9 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
 
     _render_target_skill_picker(target_ad)
 
-    # Collapsed job-description section at the bottom.
+
+def _render_job_description(target_ad: JobAd) -> None:
+    """Collapsed job-description detail, shown right under the ad header."""
     with st.expander("📋 Popis pozice (rozbal pro detail inzerátu)"):
         st.markdown(f"**Must-have:** {', '.join(target_ad.must_have) or '—'}")
         st.markdown(f"**Nice-to-have:** {', '.join(target_ad.nice_to_have) or '—'}")
