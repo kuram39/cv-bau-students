@@ -123,6 +123,48 @@ def test_target_domain_matching_history_keeps_experienced():
     assert result.verdict == "experienced"
 
 
+def test_staying_in_field_analyst_is_experienced_despite_freetext_domain():
+    """Regression (Lucie/Petr): target is the slug 'data-analyst' while the
+    work role/domain are free prose ('Lead Data Analyst', 'e-commerce / data
+    analytics'). Exact-match wrongly flagged career_changer; fuzzy must keep
+    these staying-in-field analysts as experienced."""
+    profile = _experienced_profile(
+        target_domains=["data-analyst", "data-strategy"],
+        total_work_years=8.0,
+        work_experience=[
+            WorkExperienceItem(
+                employer="Rohlik.cz",
+                role="Lead Data Analyst",
+                domain="e-commerce / data analytics",
+            ),
+            WorkExperienceItem(
+                employer="Mall.cz", role="Data Analyst", domain="e-commerce / data analytics"
+            ),
+        ],
+    )
+    result = classify(profile, today=TODAY)
+    assert result.verdict == "experienced"
+    assert any("match work history" in r for r in result.reasons)
+
+
+def test_analyst_in_finance_industry_is_experienced_not_changer():
+    """Petr: role 'Data Analyst' but domain describes the INDUSTRY
+    ('financial services / risk reporting'). Role match → experienced."""
+    profile = _experienced_profile(
+        target_domains=["data-analyst"],
+        total_work_years=3.0,
+        work_experience=[
+            WorkExperienceItem(
+                employer="ČSOB",
+                role="Data Analyst",
+                domain="financial services / risk reporting",
+            ),
+        ],
+    )
+    result = classify(profile, today=TODAY)
+    assert result.verdict == "experienced"
+
+
 def test_llm_agreement_flag_set_when_tag_matches_heuristic():
     profile = _experienced_profile()
     result = classify(profile, today=TODAY)

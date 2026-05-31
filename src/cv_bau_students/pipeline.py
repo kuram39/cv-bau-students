@@ -30,9 +30,10 @@ from cv_bau_students.models import (
     GenericResult,
     InterestResult,
     MatchScore,
+    PrefilledQuestion,
     RoleSpecificResult,
 )
-from cv_bau_students.roles.generate import generate_role_questions, prefill_answers
+from cv_bau_students.roles.generate import generate_role_questions
 from cv_bau_students.translator.translate import translate
 
 # --- Shared extraction step -------------------------------------------------
@@ -187,10 +188,10 @@ def run_generic_pass(
     )
 
     # Vrstva A (hard filter) + Vrstva B (scoring) live inside rank_candidate.
+    # NO per-ad LLM reasoning here — preview cards use the deterministic
+    # skill_fit_detail. The (think) reasoning fires once, later, only for the
+    # ad the candidate actually expresses interest in (submit_role_specific).
     matches = rank_candidate(profile, translated, top_n=top_n)
-    matches = reason_for_ranking(
-        profile, translated, matches, top_n=top_n, candidate_id=candidate_id
-    )
 
     matched_ads = [get_ad_by_id(m.ad_id) for m in matches]
     matched_ads = [a for a in matched_ads if a is not None]
@@ -223,25 +224,26 @@ def express_interest(candidate_id: int, ad_id: int, status: str) -> InterestResu
     """Stage 2 — record the candidate's choice.
 
     `wait`  → just record, no further work.
-    `interested` → ensure the fixed Qs exist, pre-fill them from the CV,
-    return them for the form.
+    `interested` → ensure the AI-generated follow-up questions exist (the BAU
+    questionnaire) and return them as a blank form. We do NOT pre-fill answers
+    with an LLM — the candidate writes their own (more honest + cheaper); the
+    questions themselves are the AI value, surfacing skills the CV alone misses.
     """
     candidates_repo.record_interest(candidate_id, ad_id, status)
     if status == "wait":
         return InterestResult(status="wait", candidate_id=candidate_id, ad_id=ad_id)
 
     questions = ensure_role_specific_questions(ad_id)
-    # ORM rows → Pydantic for the LLM helper.
-    from cv_bau_students.models import RoleSpecificQuestionPydantic
-
-    q_pyd = [
-        RoleSpecificQuestionPydantic(
-            slot=q.slot, question_text=q.question_text, extract_hint=q.extract_hint
+    prefilled = [
+        PrefilledQuestion(
+            slot=q.slot,
+            question_text=q.question_text,
+            extract_hint=q.extract_hint,
+            prefilled_answer=None,  # candidate fills this in
+            prefilled_confidence=0.0,
         )
         for q in questions
     ]
-    profile = _load_candidate_profile(candidate_id)
-    prefilled = prefill_answers(profile, q_pyd)
     return InterestResult(
         status="interested",
         candidate_id=candidate_id,
@@ -274,13 +276,21 @@ def submit_role_specific(
     )
 
     profile = _load_candidate_profile(candidate_id)
-    # Fold the elevator pitch into the profile summary so personal-fit
-    # scoring sees it (when the candidate didn't already have a summary).
-    pitch = answers.get("elevator_pitch_for_role")
-    if pitch and not (profile.summary and profile.summary.strip()):
-        profile = profile.model_copy(update={"summary": pitch})
+    # Fold ALL questionnaire answers into the profile summary BEFORE re-translate
+    # so the questionnaire actually does its job: new evidence the candidate adds
+    # (e.g. "used SQL window functions on my thesis dataset") flows into the
+    # translated capabilities → skill_fit → rationale, not just the display.
+    answer_blob = "\n".join(f"- {slot}: {text}" for slot, text in answers.items() if text)
+    if answer_blob:
+        base = (profile.summary or "").strip()
+        merged = (base + "\n\nDoplňující odpovědi k pozici:\n" + answer_blob).strip()
+        profile = profile.model_copy(update={"summary": merged})
 
     translated = translate(profile)
+    # Persist the answer-enriched capabilities so rescore_ad + the recruiter
+    # drill-in stay consistent with the score we compute here (otherwise they
+    # fall back to the CV-only capabilities and drop questionnaire evidence).
+    candidates_repo.replace_capabilities(candidate_id, translated)
     ad = get_ad_by_id(ad_id)
     if ad is None:
         raise LookupError(f"ad_id {ad_id} not found")

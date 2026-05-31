@@ -9,7 +9,7 @@ from cv_bau_students.jobads.repo import store_ad
 from cv_bau_students.levels.repo import bridge_plan
 from cv_bau_students.matcher.hard_filter import passes_hard_filter
 from cv_bau_students.matcher.rank import rank_candidate
-from cv_bau_students.matcher.score import _personal_fit, score_match
+from cv_bau_students.matcher.score import score_match
 from cv_bau_students.models import (
     CandidateProfile,
     JobAd,
@@ -17,41 +17,6 @@ from cv_bau_students.models import (
     TranslatedCapability,
 )
 from cv_bau_students.taxonomy.repo import resolve_skill
-
-
-def _bare_ad(raw_text: str) -> JobAd:
-    return JobAd(
-        id=1,
-        title="X",
-        location="Praha",
-        remote_mode="hybrid",
-        level="junior",
-        domain="data-analyst",
-        raw_text=raw_text,
-        source="synthetic",
-    )
-
-
-def test_personal_fit_token_overlap_not_substring():
-    # Diacritics-insensitive token match: "datová" overlaps "data".
-    prof = CandidateProfile(
-        candidate_type="student",
-        language="cs",
-        summary="Mám zkušenosti s datovou analýzou a reportingem.",
-        target_domains=["data-analyst"],
-    )
-    hit = _personal_fit(prof, _bare_ad("Hledáme analytika pro data a reporting v týmu."))
-    assert hit > 40.0  # shared content tokens (data, reporting, analy…) lift it
-
-    # No spurious substring hit: "SQL" must NOT match inside "NoSQL".
-    prof2 = CandidateProfile(
-        candidate_type="student", language="en", summary="SQL", target_domains=[]
-    )
-    assert _personal_fit(prof2, _bare_ad("We are a NoSQL shop.")) == 40.0
-
-    # Nothing to say → neutral baseline.
-    prof3 = CandidateProfile(candidate_type="student", language="en")
-    assert _personal_fit(prof3, _bare_ad("anything")) == 40.0
 
 
 @pytest.fixture(autouse=True)
@@ -114,14 +79,29 @@ def test_hard_filter_passes_when_language_level_meets_requirement():
     assert passes_hard_filter(profile, ad) is True
 
 
-def test_score_match_returns_high_skill_fit_when_must_have_covered():
+def test_hard_filter_reasons_names_unmet_language():
+    from cv_bau_students.matcher.hard_filter import hard_filter_reasons
+
+    profile = _student_profile().model_copy(
+        update={"languages": [LanguageRequirement(language="English", min_level="A2")]}
+    )
+    ad = _data_analyst_junior_ad()  # requires English B2
+    reasons = hard_filter_reasons(profile, ad)
+    assert reasons == ["English B2"]
+    # Meeting the requirement → no reasons, passes.
+    assert hard_filter_reasons(_student_profile(), ad) == []
+
+
+def test_score_match_skill_fit_is_coverage_of_target_set():
     profile = _student_profile()
     ad = _store_and_fetch_ad(_data_analyst_junior_ad())
-    capabilities: list[TranslatedCapability] = []
-    score = score_match(profile, capabilities, ad)
-    # Candidate covers SQL + Excel via explicit_skills; Data Analysis
-    # is also a must-have. Python (nice) is covered.
-    assert score.skill_fit > 60
+    score = score_match(profile, [], ad)
+    # No curated set → target = must ∪ nice. Candidate covers SQL, Excel
+    # (must) + Python (nice) of {SQL, Excel, Data Analysis, Python, Power BI}.
+    # skill_fit = flat coverage %, and total is skills-only.
+    assert score.skill_fit >= 60.0
+    assert score.total == score.skill_fit
+    assert score.personal_fit == 0.0  # retired
 
 
 def test_bridge_plan_returns_actionable_gaps():

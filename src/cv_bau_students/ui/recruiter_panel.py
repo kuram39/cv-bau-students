@@ -9,11 +9,10 @@ role-specific Q&A the candidate submitted.
 
 from __future__ import annotations
 
-import json
-
 import streamlit as st
 
 from cv_bau_students.candidates import repo as candidates_repo
+from cv_bau_students.explanation.format import parse_reasoning
 from cv_bau_students.jobads import repo as jobads_repo
 from cv_bau_students.models import JobAd
 
@@ -38,6 +37,7 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
         f"{target_ad.location} · {target_ad.remote_mode}"
     )
     _render_job_description(target_ad)
+    _render_target_skill_picker(target_ad)
 
     stats = candidates_repo.stats_for_ad(target_ad.id)
     if stats["total"]:
@@ -70,8 +70,6 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
         for summary in changers:
             _render_candidate_row(target_ad.id, summary)
 
-    _render_target_skill_picker(target_ad)
-
 
 def _render_job_description(target_ad: JobAd) -> None:
     """Collapsed job-description detail, shown right under the ad header."""
@@ -85,35 +83,68 @@ def _render_job_description(target_ad: JobAd) -> None:
 
 
 def _render_target_skill_picker(ad: JobAd) -> None:
-    """Recruiter curates the role's target skill set (Phase B).
+    """Recruiter curates the role's base-case target skill set.
 
-    Options come from the ad's ISCO occupation (ESCO essential → core,
-    optional → optional). The saved set drives role-coverage scoring instead
-    of the full ~500-skill ESCO list, so coverage becomes interpretable.
+    This is THE comparator: the recruiter picks the skills that matter for the
+    position (shared base for students and experienced alike), and everyone is
+    scored on coverage of that set — not on years of experience. A one-click
+    **base preset** seeds a sensible starting set; the recruiter then tweaks.
+
+    Options pool = ISCO occupation skills ∪ the ad's must/nice ∪ the preset,
+    all candidate-aligned (ESCO ids), so saving a skill actually scores.
+    Saving (or applying the preset) re-scores every candidate immediately —
+    deterministic, no LLM.
     """
-    with st.expander("🎯 Cílové dovednosti pro tuto roli (editace náboráře)"):
-        sugg = jobads_repo.suggest_target_skills(ad.id)
-        if not sugg["core"] and not sugg["optional"]:
+    with st.expander("🎯 Cílové dovednosti pro tuto roli (editace náboráře)", expanded=True):
+        st.caption(
+            "Vyber dovednosti, které pro tuto roli skutečně vyžaduješ — to je "
+            "**základní porovnávací osa** mezi studenty a experienced. **Core** = klíčové, "
+            "**Optional** = výhodou. Skóre uchazečů = pokrytí tohoto výběru."
+        )
+
+        if st.button("✨ Načíst doporučené base dovednosti", key=f"preset_{ad.id}"):
+            preset = jobads_repo.apply_base_preset(ad.id)
+            if preset["core"] or preset["optional"]:
+                n = candidates_repo.rescore_ad(ad.id)
+                st.success(
+                    f"Base preset uložen: {len(preset['core'])} core + "
+                    f"{len(preset['optional'])} optional. Přepočítáno {n} kandidátů."
+                )
+                st.rerun()
+            else:
+                # apply_base_preset is a no-op when nothing resolves → the
+                # recruiter's existing manual curation is left intact.
+                st.warning(
+                    "Pro tuto pozici nešlo z inzerátu/ISCO odvodit žádné rozpoznané "
+                    "base dovednosti. Stávající výběr ponechán beze změny — vyber ručně níže."
+                )
+
+        opts = jobads_repo.target_skill_options(ad.id)
+        if not opts["core"] and not opts["optional"]:
             st.caption(
-                "Pro tento inzerát není rozpoznané ISCO povolání — není z čeho vybírat. "
-                "Spusť `resolve_ad_isco` (seed) nebo doplň ISCO kód inzerátu."
+                "Pro tento inzerát není rozpoznané ISCO povolání ani rozpoznané "
+                "dovednosti — není z čeho vybírat. Spusť `resolve_ad_isco` (seed) "
+                "nebo doplň ISCO kód inzerátu."
             )
             return
 
-        name_to_id = {name: sid for sid, name in (sugg["core"] + sugg["optional"])}
-        core_opts = [name for _, name in sugg["core"]]
-        opt_opts = [name for _, name in sugg["optional"]]
+        name_to_id = {name: sid for sid, name in (opts["core"] + opts["optional"])}
+        core_opts = [name for _, name in opts["core"]]
+        opt_opts = [name for _, name in opts["optional"]]
+        core_set, opt_set = set(core_opts), set(opt_opts)
 
         current = jobads_repo.get_target_skills(ad.id) or {"core": set(), "optional": set()}
         id_to_name = {sid: name for name, sid in name_to_id.items()}
-        core_default = [id_to_name[i] for i in current.get("core", set()) if i in id_to_name]
-        opt_default = [id_to_name[i] for i in current.get("optional", set()) if i in id_to_name]
+        # Defaults must be a subset of each multiselect's own options, else
+        # Streamlit raises. target_skill_options keeps curated tiers consistent;
+        # this filter is the belt-and-suspenders guard.
+        core_default = [
+            n for i in current.get("core", set()) if (n := id_to_name.get(i)) in core_set
+        ]
+        opt_default = [
+            n for i in current.get("optional", set()) if (n := id_to_name.get(i)) in opt_set
+        ]
 
-        st.caption(
-            "Vyber dovednosti, které pro tuto roli skutečně vyžaduješ. "
-            "**Core** = klíčové, **Optional** = výhodou. Skóre uchazečů se počítá "
-            "vůči tomuto výběru."
-        )
         chosen_core = st.multiselect("Core dovednosti", core_opts, default=core_default)
         chosen_opt = st.multiselect("Optional dovednosti", opt_opts, default=opt_default)
         if st.button("💾 Uložit cílové dovednosti", key=f"save_target_{ad.id}"):
@@ -122,18 +153,20 @@ def _render_target_skill_picker(ad: JobAd) -> None:
                 core=[name_to_id[n] for n in chosen_core if n in name_to_id],
                 optional=[name_to_id[n] for n in chosen_opt if n in name_to_id],
             )
+            n = candidates_repo.rescore_ad(ad.id)
             if not chosen_core and not chosen_opt:
-                # Empty selection = no curation → matcher uses the full ESCO
-                # role set. Say so, rather than implying scoring uses "nothing".
+                # Empty selection = no curation → matcher falls back to the ad's
+                # must + nice-to-have as the coverage target.
                 st.info(
-                    "Prázdný výběr — kurátorská sada zrušena. Skóre použije výchozí "
-                    "ESCO sadu role (essential+optional). Přepočítej skóre."
+                    "Prázdný výběr — kurátorská sada zrušena. Skóre použije "
+                    f"must + nice-to-have z inzerátu. Přepočítáno {n} kandidátů."
                 )
             else:
                 st.success(
                     f"Uloženo: {len(chosen_core)} core + {len(chosen_opt)} optional. "
-                    "Přepočítej skóre (re-run analýzy / seed) pro projevení změny."
+                    f"Přepočítáno {n} kandidátů."
                 )
+            st.rerun()
 
 
 def _render_column(ad_id: int, *, kind: str) -> None:
@@ -145,21 +178,37 @@ def _render_column(ad_id: int, *, kind: str) -> None:
         _render_candidate_row(ad_id, summary)
 
 
+def _confidence_label(band: float) -> str:
+    """Translate the confidence band (smaller = surer) into a plain word.
+
+    The band comes from the translator's average capability confidence, NOT
+    from the coverage % (which is an exact count). So we show it as a separate
+    'how sure are we about the CV reading' signal, not a ± on the number.
+    """
+    if band <= 10:
+        return "vysoká"
+    if band <= 20:
+        return "střední"
+    return "nízká"
+
+
 def _render_candidate_row(ad_id: int, summary) -> None:
+    """One compact, collapsible list row per candidate. The header line is the
+    whole scannable summary (badge · name · coverage % · confidence); progress
+    bar, top skills, the AI headline and the full drill-in live inside the
+    expander so the page reads as a list, not a stack of blocks."""
     badge = TYPE_BADGE.get(summary.kind, "❓")
-    header = (
-        f"{badge} · {summary.display_name} · "
-        f"**{summary.total:.0f}** ± {summary.confidence_band:.0f}"
+    label = (
+        f"{badge} · {summary.display_name} · {summary.total:.0f} % · "
+        f"spolehlivost: {_confidence_label(summary.confidence_band)}"
     )
-    with st.container():
-        st.markdown(header)
+    with st.expander(label):
         st.progress(min(1.0, summary.total / 100))
         if summary.top_skills:
             st.caption("🏷 " + " · ".join(summary.top_skills))
         if summary.headline:
             st.caption(summary.headline)
-        with st.expander("🔍 Detail kandidáta"):
-            _render_detail(ad_id, summary.candidate_id)
+        _render_detail(ad_id, summary.candidate_id)
         st.markdown("---")
 
 
@@ -170,11 +219,12 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
         return
 
     m = detail.match
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Skill fit", f"{m.skill_fit:.0f}")
+    # Headline = skill coverage. Bridge = secondary "potential/growth" signal.
+    # personal_fit retired (not shown).
+    c1, c2 = st.columns(2)
+    c1.metric("Skill coverage", f"{m.skill_fit:.0f} %")
     bridge_display = f"{m.bridge_fit:.0f}" if m.bridge_fit >= 0 else "N/A"
-    c2.metric("Bridge fit", bridge_display)
-    c3.metric("Personal fit", f"{m.personal_fit:.0f}")
+    c2.metric("Bridge fit (potenciál)", bridge_display)
 
     _render_skill_fit_detail(m.skill_fit_detail)
 
@@ -209,22 +259,7 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
             )
 
     if m.reasoning:
-        st.markdown("**Zdůvodnění (AI):**")
-        try:
-            payload = json.loads(m.reasoning)
-            st.write(payload.get("verdict", m.reasoning))
-            for label, key, marker in (
-                ("Silné stránky", "strengths", "+"),
-                ("Mezery", "gaps", "−"),
-                ("Otázky na pohovor", "interview_prompts", "❓"),
-            ):
-                items = payload.get(key, [])
-                if items:
-                    st.markdown(f"**{label}:**")
-                    for item in items:
-                        st.caption(f"{marker} {item}")
-        except (json.JSONDecodeError, TypeError):
-            st.write(m.reasoning)
+        _render_reasoning(m.reasoning)
 
     if detail.raw_cv_text:
         with st.expander("📄 Původní CV (raw text)"):
@@ -232,6 +267,27 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
 
     with st.expander("🔧 Raw profil JSON"):
         st.json(detail.profile.model_dump())
+
+
+def _render_reasoning(raw: str) -> None:
+    """Structured AI verdict: headline verdict + strengths / gaps / interview
+    prompts. Tolerant of truncated/invalid JSON (never dumps raw JSON)."""
+    r = parse_reasoning(raw)
+    st.markdown("**Zdůvodnění (AI):**")
+    if r["verdict"]:
+        st.info(r["verdict"])
+    for label, key, marker in (
+        ("✅ Silné stránky", "strengths", "🟢"),
+        ("⚠️ Mezery", "gaps", "🔴"),
+        ("❓ Otázky na pohovor", "interview_prompts", "❓"),
+    ):
+        items = r.get(key) or []
+        if items:
+            st.markdown(f"**{label}:**")
+            for item in items:
+                st.markdown(f"- {marker} {item}")
+    if r["truncated"]:
+        st.caption("_(zdůvodnění bylo uloženo neúplné — přegeneruj re-runem analýzy)_")
 
 
 def _render_skill_fit_detail(d) -> None:
@@ -244,23 +300,16 @@ def _render_skill_fit_detail(d) -> None:
     if d.missing_must:
         st.caption(f"❌ Chybí must: {', '.join(d.missing_must)}")
 
-    # Legacy match rows (pre-target_source) carry isco_code/coverage but no
-    # target_source — fall back to "isco" so their role coverage still shows
-    # without needing every stored match recomputed.
-    if d.target_source or d.isco_code:
-        bonus = f" · bonus +{d.bonus_applied:.0f}" if d.bonus_applied else ""
-        if d.target_source == "curated":
-            src = "náborářem vybrané cílové dovednosti"
-        else:
-            label = d.occupation_label or "—"
-            src = f"ESCO role {label} (ISCO {d.isco_code}, essential+optional)"
+    # Headline coverage: which target-skill set drove the % + matched/missing.
+    if d.role_essential_total:
+        src = {
+            "curated": "náborářem vybrané cílové dovednosti",
+            "must_nice": "must + nice-to-have z inzerátu",
+        }.get(d.target_source, "cílové dovednosti")
         st.caption(
-            f"🎯 Role coverage — evidováno "
-            f"{d.role_essential_evidenced}/{d.role_essential_total} · {src}{bonus}"
+            f"🎯 Skill coverage — {d.role_essential_evidenced}/{d.role_essential_total} " f"({src})"
         )
         if d.role_essential_matched:
-            st.caption("🟢 Role-essential prokázané: " + " · ".join(d.role_essential_matched))
+            st.caption("🟢 Prokázané: " + " · ".join(d.role_essential_matched))
         if d.role_essential_missing:
-            st.caption(
-                "⚪ Role-essential chybějící (ukázka): " + " · ".join(d.role_essential_missing)
-            )
+            st.caption("⚪ Chybějící (ukázka): " + " · ".join(d.role_essential_missing))

@@ -179,3 +179,19 @@ until measured.
 
 This document is the answer key for the round-2 interview — not the
 roadmap. The roadmap is whatever real users break first.
+
+## Known gap — corpus prefilter ignores curated target skills (deferred)
+
+`rank_candidate`'s SQL prefilter (`find_candidate_ads`) builds `skill_ids_any`
+from the candidate's seed-namespace skill names and joins only `job_ad_skills`
+— it does NOT consult `ad_target_skills` (the recruiter-curated set) or the
+candidates' ESCO capability `skill_id`s. So in a *multi-ad corpus*, an ad a
+candidate matches ONLY through its curated ESCO target skills can be filtered
+out before `score_match` ever sees it (when other ads keep the prefilter
+result non-empty, so the full-list fallback doesn't trigger).
+
+**Why deferred:** the single-target MVP scores the one target ad *directly*
+(`pipeline._score_single_ad`, bypassing the prefilter), so this never bites the
+demo. It only matters once corpus-wide ranking against curated sets is a
+product feature. Fix when that lands: union `ad_target_skills` skill_ids +
+capability esco ids into the prefilter's overlap check.

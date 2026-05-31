@@ -170,6 +170,37 @@ def store_initial_candidate(
     return candidate_id
 
 
+def replace_capabilities(candidate_id: int, capabilities: Iterable[TranslatedCapability]) -> None:
+    """Replace a candidate's stored translated capabilities.
+
+    Used after `submit_role_specific` re-translates the profile enriched with
+    the questionnaire answers: the answer-derived capabilities must be
+    PERSISTED, else `rescore_ad` (and the recruiter drill-in) read the original
+    CV-only capabilities and the candidate loses credit for evidence they added
+    in the questionnaire whenever the recruiter edits target skills.
+    """
+    with get_session() as session:
+        session.execute(
+            TranslatedCapabilityRow.__table__.delete().where(
+                TranslatedCapabilityRow.candidate_id == candidate_id
+            )
+        )
+        for cap in capabilities:
+            session.add(
+                TranslatedCapabilityRow(
+                    candidate_id=candidate_id,
+                    skill_canonical=cap.skill,
+                    evidence_quote=cap.evidence_quote,
+                    confidence=cap.confidence,
+                    caveat=cap.caveat,
+                    source_type=cap.source_type,
+                    relevance=getattr(cap, "relevance", "direct"),
+                    esco_term=cap.esco_term,
+                    esco_skill_id=cap.skill_id,
+                )
+            )
+
+
 def record_interest(candidate_id: int, ad_id: int, status: str) -> None:
     """Insert or update a CandidateInterest row (one per candidate × ad)."""
     if status not in ("interested", "wait"):
@@ -235,28 +266,31 @@ def store_role_answers(
     prefilled_set: set[str],
     edited_set: set[str],
 ) -> None:
-    """Upsert one RoleSpecificAnswer row per answered slot."""
+    """Replace the candidate's role answers for this ad.
+
+    Replace-semantics (delete-then-insert), NOT upsert: each submit carries
+    the full answer set, so a slot omitted this time must disappear. An upsert
+    left stale rows behind — e.g. a blank submit (`answers={}`) would keep a
+    previous run's AI-drafted answers visible in the recruiter drill-in.
+    """
     with get_session() as session:
+        session.execute(
+            RoleSpecificAnswer.__table__.delete().where(
+                (RoleSpecificAnswer.candidate_id == candidate_id)
+                & (RoleSpecificAnswer.ad_id == ad_id)
+            )
+        )
         for slot, text in answers.items():
             if not text:
                 continue
-            session.execute(
-                sqlite_insert(RoleSpecificAnswer)
-                .values(
+            session.add(
+                RoleSpecificAnswer(
                     candidate_id=candidate_id,
                     ad_id=ad_id,
                     slot=slot,
                     answer_text=text,
                     was_prefilled=(slot in prefilled_set),
                     was_edited=(slot in edited_set),
-                )
-                .on_conflict_do_update(
-                    index_elements=["candidate_id", "ad_id", "slot"],
-                    set_={
-                        "answer_text": text,
-                        "was_prefilled": (slot in prefilled_set),
-                        "was_edited": (slot in edited_set),
-                    },
                 )
             )
 
@@ -295,6 +329,36 @@ def store_match(
             existing.confidence_band = match.confidence_band
             existing.bridge_plan_json = [g.model_dump() for g in match.bridge_plan]
             existing.skill_fit_detail_json = detail_json
+
+
+def rescore_ad(ad_id: int) -> int:
+    """Re-run the deterministic matcher for every candidate with a Match on
+    this ad and upsert the new scores. NO LLM — `score_match` is pure Python,
+    so the recruiter's target-skill edit is reflected instantly and for free.
+
+    The LLM reasoning text is NOT touched (`store_match` never writes it); a
+    stale verdict stays until the candidate re-submits. Returns the count
+    re-scored.
+    """
+    from cv_bau_students.jobads.repo import get_ad_by_id
+    from cv_bau_students.matcher.score import score_match
+
+    ad = get_ad_by_id(ad_id)
+    if ad is None:
+        return 0
+    with get_session() as session:
+        cand_ids = list(
+            session.execute(select(Match.candidate_id).where(Match.ad_id == ad_id)).scalars().all()
+        )
+    n = 0
+    for cid in cand_ids:
+        detail = get_candidate_detail(cid, ad_id)
+        if detail is None:
+            continue
+        match = score_match(detail.profile, detail.capabilities or [], ad)
+        store_match(cid, ad_id, match=match)
+        n += 1
+    return n
 
 
 # --- Recruiter-facing read paths --------------------------------------------
@@ -350,8 +414,7 @@ def get_candidates_for_ad(
                     total=m.total,
                     confidence_band=m.confidence_band,
                     top_skills=top_skills,
-                    headline=_first_sentence(_load_match_reasoning(session, cand.id, ad_id))
-                    or "(no reasoning yet)",
+                    headline=_reasoning_headline(_load_match_reasoning(session, cand.id, ad_id)),
                 )
             )
         return results
@@ -473,16 +536,24 @@ def _load_latest_profile(session, candidate_id: int) -> CandidateProfile:
 
 
 def _load_match_reasoning(session, candidate_id: int, ad_id: int) -> str | None:
-    """Match.reasoning isn't a stored column today — Phase 7's
-    reasoning_cache table is the canonical place. Query there."""
+    """reasoning_cache may hold MULTIPLE rows per (candidate, ad) — the key
+    includes prompt_hash, so each re-run with a different prompt adds one.
+    Take the most recent; scalar_one_or_none() would raise MultipleResultsFound."""
     from cv_bau_students.db_models import ReasoningCache
 
-    row = session.execute(
-        select(ReasoningCache).where(
-            ReasoningCache.candidate_id == candidate_id,
-            ReasoningCache.ad_id == ad_id,
+    row = (
+        session.execute(
+            select(ReasoningCache)
+            .where(
+                ReasoningCache.candidate_id == candidate_id,
+                ReasoningCache.ad_id == ad_id,
+            )
+            .order_by(ReasoningCache.created_at.desc())
+            .limit(1)
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .first()
+    )
     return row.rationale if row else None
 
 
@@ -493,3 +564,12 @@ def _first_sentence(text: str | None) -> str | None:
         if sep in text:
             return text.split(sep, 1)[0].strip() + sep.strip()
     return text.strip()
+
+
+def _reasoning_headline(raw: str | None) -> str:
+    """One-line recruiter headline = first sentence of the parsed verdict
+    (never the raw JSON string, even when the stored rationale is truncated)."""
+    from cv_bau_students.explanation.format import parse_reasoning
+
+    verdict = parse_reasoning(raw)["verdict"]
+    return _first_sentence(verdict) or "(zatím bez zdůvodnění)"

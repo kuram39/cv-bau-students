@@ -126,8 +126,9 @@ def test_match_score_for_changer_surfaces_bridge_plan_against_pm_role():
     stored_ad = ad.model_copy(update={"id": ad_id})
 
     score = score_match(profile, [], stored_ad)
-    # Project Management is in candidate.explicit_skills, so skill_fit
-    # should be > 0 even without translated capabilities.
-    assert score.skill_fit >= 60
-    # Junior PM has no experience-only gaps → bridge_fit should be high.
+    # No curated set → target = must ∪ nice (flat coverage). Project Management
+    # (must) is in explicit_skills → covered; Stakeholder Management (nice)
+    # isn't → ~1/2 = 50%.
+    assert score.skill_fit >= 50
+    # Junior PM has no experience-only gaps → bridge_fit (secondary) stays high.
     assert score.bridge_fit >= 70

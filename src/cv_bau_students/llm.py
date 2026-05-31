@@ -19,6 +19,7 @@ from cv_bau_students.config import (
     LLM_MAX_TOKENS,
     LLM_MODEL,
     LLM_THINK_BUDGET,
+    LLM_THINK_ENABLED,
     LLM_THINK_MAX_TOKENS,
     PROMPTS_DIR,
 )
@@ -90,7 +91,7 @@ def call_json(prompt: str, *, max_tokens: int = LLM_MAX_TOKENS, think: bool = Fa
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }
-    if think:
+    if think and LLM_THINK_ENABLED:
         # Explicit thinking budget (not adaptive): caps reasoning at
         # LLM_THINK_BUDGET so the remaining max_tokens is reserved for the JSON
         # answer. Adaptive thinking could consume the whole budget and leave no

@@ -17,14 +17,7 @@ profiles widen it.
 import statistics
 from collections.abc import Iterable
 
-from cv_bau_students.config import (
-    ROLE_BONUS_CAP,
-    ROLE_BONUS_PER,
-    ROLE_ESSENTIAL_GAP_SAMPLE,
-    WEIGHT_BRIDGE_FIT,
-    WEIGHT_PERSONAL_FIT,
-    WEIGHT_SKILL_FIT,
-)
+from cv_bau_students.config import ROLE_ESSENTIAL_GAP_SAMPLE
 from cv_bau_students.jobads.repo import get_target_skills
 from cv_bau_students.levels.repo import bridge_plan, checklist_exists
 from cv_bau_students.models import (
@@ -36,9 +29,7 @@ from cv_bau_students.models import (
     TranslatedCapability,
 )
 from cv_bau_students.taxonomy.repo import (
-    expected_skills_for_isco,
     names_for_ids,
-    normalize,
     resolve_many_esco,
     resolve_skill,
     resolve_skill_esco,
@@ -54,47 +45,29 @@ def score_match(
     candidate_skill_ids = _resolve_candidate_skill_ids(capabilities, profile)
     ad_must_ids = _resolve_iterable(ad.must_have)
     ad_nice_ids = _resolve_iterable(ad.nice_to_have)
-
-    # ESCO-namespace sets — only for the target-role enrichment, so candidate
-    # skills share the occupation map's id space. Base must/nice stays seed-space.
     candidate_esco_ids = _resolve_candidate_esco_ids(capabilities, profile)
-    must_esco_ids = resolve_many_esco(ad.must_have)
 
+    # MVP headline: skill coverage of the target set (recruiter-curated, else
+    # the ad's must/nice). This is the comparator across students/experienced.
     skill_fit, skill_fit_detail = _skill_fit(
-        candidate_skill_ids,
-        ad_must_ids,
-        ad_nice_ids,
-        ad,
-        candidate_esco_ids,
-        must_esco_ids,
+        candidate_skill_ids, ad_must_ids, ad_nice_ids, ad, candidate_esco_ids
     )
+    # Bridge fit kept as a SECONDARY "potential/growth" signal (how bridgeable
+    # the gaps are) — shown beside, NOT folded into the headline. personal_fit
+    # dropped from the product (was a weak lexical proxy); kept 0.0 for schema.
     gaps = bridge_plan(ad.domain, ad.level, candidate_skill_ids)
     has_rubric = checklist_exists(ad.domain, ad.level)
     bridge_fit = _bridge_fit(gaps, has_rubric=has_rubric)
-    personal_fit = _personal_fit(profile, ad)
 
-    # When no rubric exists, drop bridge axis from the weighted sum and
-    # rebalance the remaining weights — otherwise we'd be averaging
-    # against an unknown value, which inflates the total.
-    if bridge_fit is None:
-        denom = WEIGHT_SKILL_FIT + WEIGHT_PERSONAL_FIT
-        total = (WEIGHT_SKILL_FIT * skill_fit + WEIGHT_PERSONAL_FIT * personal_fit) / denom
-    else:
-        total = (
-            WEIGHT_SKILL_FIT * skill_fit
-            + WEIGHT_BRIDGE_FIT * bridge_fit
-            + WEIGHT_PERSONAL_FIT * personal_fit
-        )
+    total = skill_fit  # skills-only headline
     band = _confidence_band(capabilities)
     assert ad.id is not None
     return MatchScore(
         ad_id=ad.id,
         skill_fit=round(skill_fit, 1),
-        # Bridge_fit is a float ≥ 0; encode "no rubric" as -1.0 so the
-        # Pydantic Field(ge=0, le=100) doesn't reject it. The UI maps
-        # -1.0 back to "N/A". Documented in the model.
+        # Bridge_fit is a float ≥ 0; -1.0 encodes "no rubric" (UI shows N/A).
         bridge_fit=round(bridge_fit, 1) if bridge_fit is not None else -1.0,
-        personal_fit=round(personal_fit, 1),
+        personal_fit=0.0,  # retired from the product (schema field kept)
         total=round(total, 1),
         confidence_band=round(band, 1),
         bridge_plan=gaps,
@@ -111,93 +84,51 @@ def _skill_fit(
     nice: set[int],
     ad: JobAd,
     candidate_esco: set[int],
-    must_esco: set[int],
 ) -> tuple[float, SkillFitDetail]:
-    """Must-have hits weighted 2× nice-to-have, plus a capped ESCO bonus.
+    """MVP headline = % of the *target skill set* the candidate covers.
 
-    Base: a candidate covering all musts + half of nices scores ~75 —
-    leaves room for a perfect cover at 100. Pure must coverage (no nice
-    overlap) caps at ~67.
-
-    Enrichment: when the ad resolved to an ISCO occupation, demonstrating
-    occupation-essential ESCO skills *beyond* the recruiter's must-haves
-    adds a capped bonus (config `ROLE_BONUS_*`). The base is authoritative;
-    the bonus can only lift, never deflate — so scores stay interpretable
-    and the ~300-skill ESCO set is never a denominator. Returns the score
-    plus a `SkillFitDetail` audit trail for the recruiter panel.
+    Target set, in priority:
+      1. recruiter-curated skills (the skill-picker) — ESCO ids; candidate
+         compared in ESCO space. This is the recruiter's "score everyone on
+         these base skills".
+      2. else the ad's must_have ∪ nice_to_have (seed-namespace ids).
+    The full ESCO essential∪optional set (~600) is deliberately NOT a
+    denominator — coverage would collapse to ~0. A small recruiter-chosen set
+    is what makes the % comparable across students vs experienced.
+    Returns (coverage 0..100, SkillFitDetail audit).
     """
-    base = _base_skill_fit(candidate, must, nice)
-    # One name lookup for all three must/nice subsets (was three queries).
-    namemap = names_for_ids((candidate & must) | (must - candidate) | (candidate & nice))
+    # must/nice breakdown — always shown to the recruiter for context.
+    mn = names_for_ids((candidate & must) | (must - candidate) | (candidate & nice))
     detail = SkillFitDetail(
-        matched_must=_sorted_names(candidate & must, namemap),
-        missing_must=_sorted_names(must - candidate, namemap),
-        matched_nice=_sorted_names(candidate & nice, namemap),
+        matched_must=_sorted_names(candidate & must, mn),
+        missing_must=_sorted_names(must - candidate, mn),
+        matched_nice=_sorted_names(candidate & nice, mn),
     )
 
-    base, detail = _apply_role_enrichment(base, detail, candidate_esco, must_esco, ad)
-    return min(100.0, base), detail
-
-
-def _base_skill_fit(candidate: set[int], must: set[int], nice: set[int]) -> float:
-    must_score = (len(candidate & must) / max(1, len(must))) * 100 if must else 0.0
-    nice_score = (len(candidate & nice) / max(1, len(nice))) * 100 if nice else 0.0
-    if not must and not nice:
-        return 0.0
-    must_weight = 2.0 if must else 0.0
-    nice_weight = 1.0 if nice else 0.0
-    return (must_score * must_weight + nice_score * nice_weight) / (must_weight + nice_weight)
-
-
-def _apply_role_enrichment(
-    base: float,
-    detail: SkillFitDetail,
-    candidate_esco: set[int],
-    must_esco: set[int],
-    ad: JobAd,
-) -> tuple[float, SkillFitDetail]:
-    """Fold ESCO occupation skill coverage into skill_fit + the audit.
-
-    Uses the ESCO-namespace candidate set so it actually intersects the
-    occupation map. Counts the occupation's essential ∪ optional skills
-    (optional is where common tools like SQL land in ESCO). Capped bonus,
-    base untouched — enrichment only lifts.
-    """
-    # Prefer the recruiter-curated target set (small, interpretable) over the
-    # full ESCO essential∪optional fallback. Curated can apply even without an
-    # ISCO code (recruiter picked skills directly).
     curated = get_target_skills(ad.id) if ad.id is not None else None
     if curated:
-        role_set = curated.get("core", set()) | curated.get("optional", set())
-        source = "curated"
-    elif ad.isco_code:
-        role_set = set(expected_skills_for_isco(ad.isco_code, "essential")) | set(
-            expected_skills_for_isco(ad.isco_code, "optional")
-        )
-        source = "isco"
+        target = curated.get("core", set()) | curated.get("optional", set())
+        cand = candidate_esco
+        detail.target_source = "curated"
     else:
-        return base, detail
-    # Mark the detail enriched ONLY once role_set is known non-empty — else an
-    # ISCO with no skill_industry_map rows would render a bogus "0/0 · ISCO
-    # None" coverage line (target_source set but isco_code never populated).
-    if not role_set:
-        return base, detail
-    detail.target_source = source
+        target = must | nice
+        cand = candidate
+        detail.target_source = "must_nice"
 
-    evidenced = candidate_esco & role_set
-    extra = evidenced - must_esco  # role skills beyond the recruiter must-haves
-    bonus = min(ROLE_BONUS_CAP, len(extra) * ROLE_BONUS_PER)
+    if not target:
+        return 0.0, detail
 
-    missing_sample = set(sorted(role_set - candidate_esco)[:ROLE_ESSENTIAL_GAP_SAMPLE])
-    namemap = names_for_ids(evidenced | missing_sample)  # one lookup for both lists
+    matched = cand & target
+    coverage = 100.0 * len(matched) / len(target)
+    missing_sample = set(sorted(target - cand)[:ROLE_ESSENTIAL_GAP_SAMPLE])
+    namemap = names_for_ids(matched | missing_sample)
     detail.isco_code = ad.isco_code
     detail.occupation_label = ad.isco_occupation_label
-    detail.role_essential_total = len(role_set)
-    detail.role_essential_evidenced = len(evidenced)
-    detail.role_essential_matched = _sorted_names(evidenced, namemap)
+    detail.role_essential_total = len(target)
+    detail.role_essential_evidenced = len(matched)
+    detail.role_essential_matched = _sorted_names(matched, namemap)
     detail.role_essential_missing = _sorted_names(missing_sample, namemap)
-    detail.bonus_applied = round(bonus, 1)
-    return base + bonus, detail
+    return coverage, detail
 
 
 def _resolve_candidate_esco_ids(
@@ -247,38 +178,6 @@ def _bridge_fit(gaps: list[GapItem], *, has_rubric: bool) -> float | None:
     total_months = sum(g.bridgeable_in_months or 0 for g in gaps)
     # Scale: 0 months → 100, 12 months → 50, 24 months → 0.
     return max(0.0, 100.0 - (total_months / 24.0) * 100.0)
-
-
-_PERSONAL_FIT_STOPWORDS = frozenset(
-    # tiny cs+en function-word set; keeps content tokens only
-    "a i o u v k s z na se si je to the of and to in for with on at as by".split()
-)
-
-
-def _personal_fit(profile: CandidateProfile, ad: JobAd) -> float:
-    """Content-token overlap between the candidate's summary + target_domains
-    and the ad's raw_text. Cheap proxy — production swaps in an LLM scoring
-    call. Returns 0..100.
-
-    Token-set overlap (not substring `in`): substring matching fired "SQL"
-    inside "NoSQL" and missed "datová" vs "data"; tokenizing on the
-    diacritics-stripped `normalize()` form fixes both. Short tokens + a small
-    stopword set are dropped so only meaningful overlap scores.
-    """
-
-    def _content_tokens(text: str) -> set[str]:
-        return {
-            t for t in normalize(text).split() if len(t) > 2 and t not in _PERSONAL_FIT_STOPWORDS
-        }
-
-    haystack = _content_tokens(ad.raw_text)
-    needles = _content_tokens(profile.summary or "")
-    for domain in profile.target_domains:
-        needles |= _content_tokens(domain.replace("-", " "))
-    if not needles:
-        return 40.0  # neutral baseline when the candidate told us nothing
-    overlap = len(needles & haystack)
-    return min(100.0, 40.0 + 8.0 * overlap)
 
 
 def _confidence_band(capabilities: list[TranslatedCapability]) -> float:

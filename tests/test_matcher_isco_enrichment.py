@@ -1,23 +1,22 @@
-"""Tests for ESCO target-role enrichment of skill_fit (`matcher.score`).
+"""Tests for the MVP skills-coverage headline (`matcher.score`).
 
-Enrichment resolves candidate skills into the ESCO namespace
-(`resolve_skill_esco`), so the skills are seeded WITH `esco_uri` and the
-occupation map (`skill_industry_map`) points at the same ids. Covers the
-explicit-skill path, the stored-capability `skill_id` path, optional
-relations, the cap, and the no-ISCO regression.
+skill_fit = % of the *target skill set* the candidate covers. Target set:
+recruiter-curated skills (skill-picker, ESCO ids) when present, else the ad's
+must ∪ nice (seed ids). total == skill_fit (skills-only); personal_fit retired.
 """
 
 from __future__ import annotations
 
-from cv_bau_students.config import ROLE_BONUS_CAP
 from cv_bau_students.db import get_session
-from cv_bau_students.db_models import Skill, SkillIndustryMap
+from cv_bau_students.db_models import Skill
+from cv_bau_students.jobads.repo import set_target_skills, store_ad
 from cv_bau_students.matcher.score import score_match
 from cv_bau_students.models import CandidateProfile, JobAd, TranslatedCapability
 
 
 def _seed_skills(names: list[str]) -> dict[str, int]:
-    """Seed ESCO-namespace skills (esco_uri set) so resolve_skill_esco finds them."""
+    """ESCO-namespace skills (esco_uri) — resolvable by both resolve_skill
+    (canonical_name) and resolve_skill_esco."""
     out: dict[str, int] = {}
     with get_session() as session:
         for n in names:
@@ -28,135 +27,87 @@ def _seed_skills(names: list[str]) -> dict[str, int]:
     return out
 
 
-def _seed_relation(isco: str, skill_ids: list[int], relation: str) -> None:
-    with get_session() as session:
-        for sid in skill_ids:
-            session.add(SkillIndustryMap(skill_id=sid, isco_code=isco, relation_type=relation))
-
-
 def _profile(skills: list[str]) -> CandidateProfile:
     return CandidateProfile(
         candidate_type="student", language="en", explicit_skills=skills, summary="data student"
     )
 
 
-def _ad(isco_code: str | None) -> JobAd:
-    return JobAd(
+def _ad(**kw) -> JobAd:
+    base = dict(
         id=1,
         title="Data Analyst",
         location="Praha",
         remote_mode="hybrid",
         level="junior",
         domain="data-analyst",
-        must_have=["SQL", "Python", "Power BI", "Excel"],
-        nice_to_have=["statistics"],
+        must_have=["SQL", "Excel"],
+        nice_to_have=["Python"],
         raw_text="analyst role",
         source="synthetic",
-        isco_code=isco_code,
-        isco_occupation_label="data analyst" if isco_code else None,
-        isco_method="lexical" if isco_code else None,
+    )
+    base.update(kw)
+    return JobAd(**base)
+
+
+def test_curated_set_is_the_coverage_denominator():
+    ids = _seed_skills(["SQL", "Python", "data mining", "reporting", "Excel"])
+    ad = _ad()
+    ad_id = store_ad(ad)
+    ad = ad.model_copy(update={"id": ad_id})
+    # Recruiter curates 4 skills; candidate evidences 2 of them.
+    set_target_skills(
+        ad_id, core=[ids["SQL"], ids["data mining"]], optional=[ids["Python"], ids["reporting"]]
     )
 
-
-def test_enrichment_adds_capped_bonus_and_detail():
-    ids = _seed_skills(
-        [
-            "SQL",
-            "Python",
-            "Power BI",
-            "Excel",
-            "data mining",
-            "data visualisation",
-            "statistics",
-            "reporting",
-        ]
-    )
-    # role_set = essential ∪ optional = 6 skills (2 of them also musts).
-    _seed_relation("2511", [ids["SQL"], ids["data mining"], ids["data visualisation"]], "essential")
-    _seed_relation("2511", [ids["Python"], ids["statistics"], ids["reporting"]], "optional")
-    # Candidate covers 2 musts (SQL, Python) + 2 extra role skills.
-    profile = _profile(["SQL", "Python", "data mining", "data visualisation"])
-
-    base_score = score_match(profile, [], _ad(isco_code=None))
-    enriched = score_match(profile, [], _ad(isco_code="2511"))
-
-    assert base_score.skill_fit_detail.isco_code is None
-    assert base_score.skill_fit_detail.bonus_applied == 0.0
-
-    d = enriched.skill_fit_detail
-    assert d.isco_code == "2511"
-    assert d.role_essential_total == 6  # essential ∪ optional
-    assert d.role_essential_evidenced == 4
-    # 2 role skills beyond the must-haves (data mining, data visualisation) → +3 each.
-    assert d.bonus_applied == 6.0
-    assert enriched.skill_fit == round(base_score.skill_fit + 6.0, 1)
-    assert d.matched_must == ["Python", "SQL"]
-    assert d.missing_must == ["Excel", "Power BI"]
-    assert "statistics" in d.role_essential_missing
-    assert "reporting" in d.role_essential_missing
+    score = score_match(_profile(["SQL", "Python"]), [], ad)
+    d = score.skill_fit_detail
+    assert d.target_source == "curated"
+    assert d.role_essential_total == 4
+    assert d.role_essential_evidenced == 2
+    assert score.skill_fit == 50.0  # 2 / 4
+    assert score.total == 50.0  # skills-only headline
+    assert score.personal_fit == 0.0
+    assert "SQL" in d.role_essential_matched
 
 
-def test_stored_capability_skill_id_is_used():
-    """A capability carrying an ESCO skill_id counts even if its name is unresolvable."""
-    ids = _seed_skills(["SQL", "Python", "Power BI", "Excel", "data mining"])
-    _seed_relation("2511", [ids["data mining"]], "essential")
+def test_stored_capability_skill_id_counts_toward_curated():
+    ids = _seed_skills(["SQL", "data mining"])
+    ad = _ad(must_have=["SQL"], nice_to_have=[])
+    ad_id = store_ad(ad)
+    ad = ad.model_copy(update={"id": ad_id})
+    set_target_skills(ad_id, core=[ids["data mining"]], optional=[])
     cap = TranslatedCapability(
-        skill="dolování dat",  # not seeded → name won't resolve
+        skill="dolování dat",  # unresolvable name
         evidence_quote="…",
         confidence=0.8,
         source_type="thesis",
         skill_id=ids["data mining"],  # but the ESCO id is stored
     )
-    enriched = score_match(_profile([]), [cap], _ad(isco_code="2511"))
-    d = enriched.skill_fit_detail
-    assert d.role_essential_evidenced == 1
-    assert d.bonus_applied == 3.0
-    assert "data mining" in d.role_essential_matched
+    score = score_match(_profile([]), [cap], ad)
+    assert score.skill_fit == 100.0  # the one curated skill is covered via skill_id
+    assert "data mining" in score.skill_fit_detail.role_essential_matched
 
 
-def test_enrichment_bonus_is_capped():
-    extras = [f"skill{i}" for i in range(10)]
-    ids = _seed_skills(["SQL", "Python", "Power BI", "Excel", *extras])
-    _seed_relation("2511", [ids[name] for name in extras], "essential")
-    profile = _profile(["SQL", *extras])  # evidences all 10 extras
+def test_must_nice_fallback_when_no_curated_set():
+    _seed_skills(["SQL", "Excel", "Python"])
+    ad = _ad()  # must=[SQL,Excel], nice=[Python]; no curated set
+    ad_id = store_ad(ad)
+    ad = ad.model_copy(update={"id": ad_id})
 
-    enriched = score_match(profile, [], _ad(isco_code="2511"))
-    assert enriched.skill_fit_detail.bonus_applied == ROLE_BONUS_CAP
-    assert enriched.skill_fit <= 100.0
-
-
-def test_no_enrichment_when_isco_has_no_role_skills():
-    _seed_skills(["SQL", "Python", "Power BI", "Excel"])
-    enriched = score_match(_profile(["SQL", "Python"]), [], _ad(isco_code="9999"))
-    d = enriched.skill_fit_detail
-    assert d.role_essential_total == 0
-    assert d.bonus_applied == 0.0
-    # target_source must stay unset → panel won't render a bogus "0/0 ISCO None".
-    assert d.target_source is None
+    score = score_match(_profile(["SQL", "Python"]), [], ad)
+    d = score.skill_fit_detail
+    assert d.target_source == "must_nice"
+    assert d.role_essential_total == 3  # SQL, Excel, Python
+    assert d.role_essential_evidenced == 2  # SQL + Python
+    assert round(score.skill_fit, 1) == 66.7
+    assert score.total == score.skill_fit
 
 
-def test_no_enrichment_without_isco():
-    _seed_skills(["SQL", "Python"])
-    enriched = score_match(_profile(["SQL"]), [], _ad(isco_code=None))
-    assert enriched.skill_fit_detail.isco_code is None
-    assert enriched.skill_fit_detail.bonus_applied == 0.0
-
-
-def test_curated_target_set_overrides_isco_default():
-    """Phase B: a recruiter-curated set is scored instead of the full ESCO list."""
-    from cv_bau_students.jobads.repo import set_target_skills, store_ad
-
-    ids = _seed_skills(["SQL", "Python", "Power BI", "Excel", "data mining", "noise1", "noise2"])
-    # ISCO default would include lots of noise; recruiter curates a tight set.
-    _seed_relation("2511", [ids["noise1"], ids["noise2"], ids["data mining"]], "essential")
-    ad_obj = _ad(isco_code="2511")
-    ad_id = store_ad(ad_obj)
-    set_target_skills(ad_id, core=[ids["data mining"]], optional=[ids["Power BI"]])
-
-    ad_obj = ad_obj.model_copy(update={"id": ad_id})
-    enriched = score_match(_profile(["SQL", "Python", "data mining"]), [], ad_obj)
-    d = enriched.skill_fit_detail
-    assert d.target_source == "curated"
-    assert d.role_essential_total == 2  # curated core+optional, NOT the ISCO essential set
-    assert "data mining" in d.role_essential_matched
-    assert d.bonus_applied == 3.0  # 1 curated skill beyond musts (data mining)
+def test_no_target_set_scores_zero():
+    _seed_skills(["SQL"])
+    ad = _ad(must_have=[], nice_to_have=[])
+    ad_id = store_ad(ad)
+    ad = ad.model_copy(update={"id": ad_id})
+    score = score_match(_profile(["SQL"]), [], ad)
+    assert score.skill_fit == 0.0

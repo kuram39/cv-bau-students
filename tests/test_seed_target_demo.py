@@ -57,25 +57,12 @@ _ROLE_QUESTIONS = {
     ]
 }
 
-_PREFILL = {
-    "answers": [
-        {
-            "slot": "elevator_pitch_for_role",
-            "answer": "Baví mě data.",
-            "confidence": 0.7,
-            "missing": False,
-        },
-        {"slot": "sql_experience", "answer": "SQL ze školy.", "confidence": 0.6, "missing": False},
-        {"slot": "motivation_or_scenario", "answer": "", "confidence": 0.0, "missing": True},
-    ]
-}
-
 
 def _dispatch(prompt: str, **_kwargs) -> dict:
+    # No prefill branch — AI answer drafting was removed; only questions are
+    # AI-generated, answers come from the human (empty in the seed).
     if "Role-specific question generator" in prompt:
         return _ROLE_QUESTIONS
-    if "Pre-fill role-specific answers" in prompt:
-        return _PREFILL
     if "Translate student / career-changer artefacts" in prompt:
         return {"translated_capabilities": []}
     if "recruiter-facing rationale" in prompt:
@@ -101,10 +88,6 @@ def _make_target_ad() -> int:
     )
 
 
-def _fake_fabricate(_summary: str, _question: str) -> str:
-    return "Fabricated seed answer."
-
-
 def _write_cvs(tmp_path: Path) -> tuple[Path, Path]:
     students = tmp_path / "students"
     experienced = tmp_path / "experienced"
@@ -122,10 +105,7 @@ def test_seed_populates_full_demo(tmp_path, monkeypatch):
     monkeypatch.setattr(seed, "STUDENTS_DIR", students)
     monkeypatch.setattr(seed, "EXPERIENCED_DIR", experienced)
 
-    with (
-        patch("cv_bau_students.llm.call_json", side_effect=_dispatch),
-        patch.object(seed, "_fabricate_answer", side_effect=_fake_fabricate),
-    ):
+    with patch("cv_bau_students.llm.call_json", side_effect=_dispatch):
         rc = seed.run_seed()
     assert rc == 0
 
@@ -147,10 +127,7 @@ def test_seed_is_idempotent(tmp_path, monkeypatch):
     monkeypatch.setattr(seed, "STUDENTS_DIR", students)
     monkeypatch.setattr(seed, "EXPERIENCED_DIR", experienced)
 
-    with (
-        patch("cv_bau_students.llm.call_json", side_effect=_dispatch),
-        patch.object(seed, "_fabricate_answer", side_effect=_fake_fabricate),
-    ):
+    with patch("cv_bau_students.llm.call_json", side_effect=_dispatch):
         seed.run_seed()
         seed.run_seed()  # second run
 

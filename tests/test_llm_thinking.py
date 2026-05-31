@@ -41,10 +41,25 @@ def test_default_call_has_no_thinking_kwarg():
     assert kwargs["max_tokens"] == LLM_MAX_TOKENS
 
 
-def test_think_true_enables_budgeted_thinking():
-    msg = _fake_message(text='{"ok": true}', with_thinking=True)
+def test_think_true_ignored_when_disabled_by_default():
+    """LLM_THINK_ENABLED is False by default → think=True sends no thinking."""
+    msg = _fake_message(text='{"ok": true}')
     client = _patched_client(msg)
     with patch.object(llm, "_client", return_value=client):
+        out = llm.call_json("prompt", think=True)
+    assert out == {"ok": True}
+    _, kwargs = client.messages.create.call_args
+    assert "thinking" not in kwargs
+    assert kwargs["max_tokens"] == LLM_MAX_TOKENS  # not bumped
+
+
+def test_think_true_enables_budgeted_thinking_when_on():
+    msg = _fake_message(text='{"ok": true}', with_thinking=True)
+    client = _patched_client(msg)
+    with (
+        patch.object(llm, "_client", return_value=client),
+        patch.object(llm, "LLM_THINK_ENABLED", True),
+    ):
         out = llm.call_json("prompt", think=True)
     # Thinking block ignored; JSON parsed from the text block.
     assert out == {"ok": True}
@@ -59,7 +74,10 @@ def test_explicit_large_max_tokens_not_shrunk_by_think():
     msg = _fake_message(text="{}")
     client = _patched_client(msg)
     big = LLM_THINK_MAX_TOKENS + 5000
-    with patch.object(llm, "_client", return_value=client):
+    with (
+        patch.object(llm, "_client", return_value=client),
+        patch.object(llm, "LLM_THINK_ENABLED", True),
+    ):
         llm.call_json("prompt", max_tokens=big, think=True)
     _, kwargs = client.messages.create.call_args
     # think bumps only when the caller's budget is smaller than the floor.

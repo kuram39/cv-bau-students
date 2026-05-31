@@ -14,7 +14,7 @@ import json
 from sqlalchemy import select
 
 from cv_bau_students import llm
-from cv_bau_students.config import LLM_MODEL
+from cv_bau_students.config import LLM_MODEL, LLM_THINK_ENABLED
 from cv_bau_students.db import get_session
 from cv_bau_students.db_models import ReasoningCache
 from cv_bau_students.jobads.repo import list_ads
@@ -45,9 +45,11 @@ def reason(
         language=profile.language,
     )
     # Key the cache on the prompt AND the generation settings (model +
-    # thinking mode). Switching the model or enabling adaptive thinking must
-    # bust stale rationales rather than serve the old no-thinking output.
-    cache_key = f"model={LLM_MODEL}|think=True|{prompt}"
+    # EFFECTIVE thinking mode). think=True only takes effect when
+    # LLM_THINK_ENABLED is on, so the key must reflect the effective mode —
+    # otherwise flipping CV_BAU_STUDENTS_THINK=1 for the quality A/B keeps
+    # serving the old no-thinking rationale until the cache is cleared.
+    cache_key = f"model={LLM_MODEL}|think={LLM_THINK_ENABLED}|{prompt}"
     prompt_hash = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()
 
     if candidate_id is not None and match.ad_id is not None:

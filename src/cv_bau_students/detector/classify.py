@@ -11,6 +11,7 @@ The heuristic uses only the structured profile fields (`total_work_years`,
 `work_experience`). No LLM call here.
 """
 
+import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date
@@ -20,6 +21,41 @@ from cv_bau_students.config import (
     STUDENT_MAX_WORK_YEARS,
 )
 from cv_bau_students.models import CandidateProfile, CandidateType
+
+# Above this fuzzy score a target_domain is considered to match a piece of work
+# history → the candidate is staying in their field (experienced), not changing.
+_DOMAIN_MATCH_THRESHOLD = 85
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
+def _target_matches_history(profile: CandidateProfile, target_set: set[str]) -> str | None:
+    """Does any target_domain line up with the candidate's actual work?
+
+    Compares each target slug against every work entry's ROLE title (token-set:
+    'data-analyst' ≈ 'Lead Data Analyst' = 100) and its free-text DOMAIN
+    (partial: 'data-analyst' ≈ 'e-commerce / data analytics' = 92). Fuzzy on
+    purpose: target_domains are normalized slugs while role/domain are free
+    prose, so exact-match wrongly flagged staying-in-field analysts (Lucie,
+    Petr) as career-changers. Returns the matched signal (for the audit
+    reason), else None. Brigády are ignored — cross-domain by definition.
+    """
+    from rapidfuzz import fuzz
+
+    targets = [_norm(t) for t in target_set if _norm(t)]
+    for entry in profile.work_experience:
+        if entry.is_brigada:
+            continue
+        role_n = _norm(entry.role or "")
+        domain_n = _norm(entry.domain or "")
+        for t in targets:
+            if role_n and fuzz.token_set_ratio(t, role_n) >= _DOMAIN_MATCH_THRESHOLD:
+                return f"role '{entry.role}'"
+            if domain_n and fuzz.partial_ratio(t, domain_n) >= _DOMAIN_MATCH_THRESHOLD:
+                return f"domain '{entry.domain}'"
+    return None
 
 
 @dataclass(frozen=True)
@@ -90,26 +126,25 @@ def _classify_changer_vs_experienced(
         reasons.append("no target_domains stated — experienced by default")
         return "experienced"
 
-    # Compare target_domains to the dominant family of work history.
-    history_families = _family_distribution(profile)
-    if not history_families:
+    if not profile.work_experience:
         reasons.append(
-            "target_domains stated but no work-history domain to compare against —"
+            "target_domains stated but no work history to compare against —"
             " defaulting to experienced"
         )
         return "experienced"
 
-    dominant_family, dominant_count = history_families.most_common(1)[0]
+    # Fuzzy match target_domains against the candidate's actual roles/domains
+    # (exact-match wrongly flagged staying-in-field analysts as changers).
     target_set = {d.lower() for d in profile.target_domains}
-    if dominant_family.lower() in target_set:
-        reasons.append(
-            f"target_domains overlap dominant work family ({dominant_family}) —" " experienced"
-        )
+    matched = _target_matches_history(profile, target_set)
+    if matched is not None:
+        reasons.append(f"target_domains match work history ({matched}) — experienced")
         return "experienced"
 
+    families = ", ".join(sorted(_family_distribution(profile))) or "—"
     reasons.append(
-        f"target_domains {sorted(target_set)} ≠ dominant work family"
-        f" ({dominant_family}, n={dominant_count}) — career_changer"
+        f"target_domains {sorted(target_set)} match no work role/domain"
+        f" (history: {families}) — career_changer"
     )
     return "career_changer"
 

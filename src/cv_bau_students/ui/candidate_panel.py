@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from cv_bau_students.models import GenericResult, InterestResult
+from cv_bau_students.matcher.hard_filter import hard_filter_reasons
+from cv_bau_students.models import GenericResult, InterestResult, JobAd
 from cv_bau_students.pipeline import (
     express_interest,
     run_generic_pass,
@@ -29,8 +30,25 @@ TYPE_BADGE = {
     "experienced": "💼 Experienced",
 }
 
+# Tweet-length cap per role-question answer; enforced as a hard filter on submit.
+MAX_ANSWER_CHARS = 280
 
-def render_candidate_panel() -> None:
+
+def render_candidate_panel(target_ad: JobAd | None = None) -> None:
+    """Single-target demo: every uploaded CV is matched against ONE
+    pre-selected position (`target_ad`). The candidate expresses interest in
+    that role only — so they always land in the recruiter view for it.
+    Corpus-wide ranking is above MVP scope.
+    """
+    if target_ad is None:
+        st.warning(
+            "Cílová pozice není v databázi. Spusť seed "
+            "(`python -m scripts.seed_target_demo`) a obnov stránku."
+        )
+        return
+    # Stash the target ad so the step functions (which run on later reruns) see it.
+    st.session_state["target_ad"] = target_ad.model_dump()
+
     step = st.session_state.get("cand_step", "upload")
     if step == "upload":
         _step_upload()
@@ -42,6 +60,10 @@ def render_candidate_panel() -> None:
         _step_done()
     else:
         _step_upload()
+
+
+def _target_ad() -> JobAd:
+    return JobAd.model_validate(st.session_state["target_ad"])
 
 
 def _reset() -> None:
@@ -92,35 +114,42 @@ def _format_missing(result: GenericResult) -> str:
 
 def _step_matches() -> None:
     result = GenericResult.model_validate(st.session_state["generic_result"])
+    ad = _target_ad()
     st.markdown(f"### ✅ Profil zpracován — {TYPE_BADGE.get(result.profile.candidate_type, '')}")
-    st.caption(
-        "Našli jsme tyto vhodné pozice. Vyber tu, o kterou máš zájem, " "nebo počkej na další."
-    )
+    st.caption("Tvůj profil porovnáváme s touto otevřenou pozicí:")
 
-    if not result.matches:
-        st.info("Žádné vhodné pozice momentálně. Zkus to později.")
-        if st.button("↩︎ Nahrát jiné CV"):
-            _reset()
-            st.rerun()
-        return
-
-    for i, match in enumerate(result.matches):
-        ad = next((a for a in result.matched_ads if a.id == match.ad_id), None)
-        if ad is None:
-            continue
-        with st.container():
-            st.markdown(f"**{ad.title}** — {ad.employer or '—'} · {ad.location} · {ad.level}")
-            st.caption(_match_reasoning_line(match))
-            c1, c2 = st.columns(2)
-            if c1.button("✅ Mám zájem", key=f"interest_{i}"):
-                _go_interested(result.candidate_id, match.ad_id)
-            if c2.button("⏳ Počkám na další pozici", key=f"wait_{i}"):
-                express_interest(result.candidate_id, match.ad_id, "wait")
-                st.info(
-                    "OK. Jakmile přijde další vhodná pozice, dáme vědět e-mailem. "
-                    "_(V MVP e-maily neodesíláme — informativní text.)_"
-                )
-            st.markdown("---")
+    # Preview line for the target ad: reuse its match if the generic pass
+    # surfaced it; otherwise show a neutral line (the recruiter view re-scores).
+    target_match = next((m for m in result.matches if m.ad_id == ad.id), None)
+    # Hard KO (language level) — gate interest so ineligible applicants don't
+    # land in the recruiter view via the direct submit path.
+    ko_reasons = hard_filter_reasons(result.profile, ad)
+    with st.container():
+        st.markdown(f"**{ad.title}** — {ad.employer or '—'} · {ad.location} · {ad.level}")
+        if target_match is not None:
+            st.caption(_match_reasoning_line(target_match))
+        if ko_reasons:
+            st.error(
+                "Nesplňuješ tvrdé požadavky pozice (jazyková úroveň): "
+                + ", ".join(ko_reasons)
+                + ". Přihlášku na tuto pozici nelze odeslat."
+            )
+        c1, c2 = st.columns(2)
+        if c1.button(
+            "✅ Mám zájem o tuto pozici",
+            type="primary",
+            key="interest_target",
+            disabled=bool(ko_reasons),
+        ):
+            _go_interested(result.candidate_id, ad.id)
+        if c2.button("🔎 Mám zájem o jinou nabídku", key="interest_other"):
+            express_interest(result.candidate_id, ad.id, "wait")
+            st.info(
+                "OK — tuto pozici přeskakujeme. Jakmile přibude jiná vhodná nabídka, "
+                "dáme vědět e-mailem. _(V tomto demu nabízíme jen tuto jednu pozici; "
+                "e-maily neodesíláme — informativní text.)_"
+            )
+        st.markdown("---")
 
     if st.button("↩︎ Nahrát jiné CV"):
         _reset()
@@ -131,7 +160,18 @@ def _match_reasoning_line(match) -> str:
     import json
 
     if not match.reasoning:
-        return f"Celkový fit (vidí recruiter): skryté · pozice ad #{match.ad_id}"
+        # No LLM verdict at preview time (deferred to express-interest) — build a
+        # deterministic "why it fits" from the matcher's own skill_fit_detail.
+        d = getattr(match, "skill_fit_detail", None)
+        if d is not None:
+            hit = ", ".join((d.matched_must + d.matched_nice)[:4]) or "—"
+            parts = [f"Sedí: {hit}"]
+            if d.missing_must:
+                parts.append(f"chybí: {', '.join(d.missing_must[:3])}")
+            if d.role_essential_total:
+                parts.append(f"role {d.role_essential_evidenced}/{d.role_essential_total}")
+            return "Proč ti sedne — " + " · ".join(parts)
+        return f"Skill fit: {match.skill_fit:.0f}/100 · pozice ad #{match.ad_id}"
     try:
         payload = json.loads(match.reasoning)
         return "Proč ti sedne: " + str(payload.get("verdict", ""))[:240]
@@ -156,8 +196,10 @@ def _step_role_form() -> None:
     interest = InterestResult.model_validate(st.session_state["interest_result"])
     st.markdown("### 📝 Pár otázek k pozici")
     st.caption(
-        "Některé odpovědi jsme za tebe předvyplnili z CV — zkontroluj je, "
-        "uprav nebo nech být. Otázky jsou stejné pro všechny uchazeče."
+        "Tyto doplňující otázky pomáhají odhalit dovednosti, které z CV nemusí "
+        "být patrné. Odpověz vlastními slovy, **stručně — max "
+        f"{MAX_ANSWER_CHARS} znaků** na odpověď (jako tweet). Otázky jsou stejné "
+        "pro všechny uchazeče. **Vyplň všechny** — bez toho přihlášku nelze odeslat."
     )
 
     with st.form("role_form"):
@@ -166,15 +208,30 @@ def _step_role_form() -> None:
         for q in interest.prefilled_questions:
             default = q.prefilled_answer or ""
             prefilled_defaults[q.slot] = default
-            label = q.question_text
-            if q.prefilled_answer:
-                label += "  · 🤖 AI návrh — můžeš upravit"
-            else:
-                label += "  · ✍️ doplň prosím"
-            inputs[q.slot] = st.text_area(label, value=default, key=f"rf_{q.slot}")
+            inputs[q.slot] = st.text_area(
+                q.question_text,
+                value=default,
+                key=f"rf_{q.slot}",
+                max_chars=MAX_ANSWER_CHARS,
+                help=f"Max {MAX_ANSWER_CHARS} znaků.",
+            )
         submitted = st.form_submit_button("Odeslat přihlášku", type="primary")
 
     if submitted:
+        stripped = {s: v.strip() for s, v in inputs.items()}
+        # Hard filter: every question required + max length enforced.
+        missing = [s for s, v in stripped.items() if not v]
+        too_long = [s for s, v in stripped.items() if len(v) > MAX_ANSWER_CHARS]
+        if missing:
+            st.error(
+                f"Vyplň prosím všechny otázky ({len(missing)} zatím prázdná) — "
+                "přihlášku nelze odeslat s prázdnou odpovědí."
+            )
+            return
+        if too_long:
+            st.error(f"Některé odpovědi přesahují {MAX_ANSWER_CHARS} znaků. Zkrať je.")
+            return
+
         prefilled_set = {s for s, d in prefilled_defaults.items() if d}
         edited_set = {
             s

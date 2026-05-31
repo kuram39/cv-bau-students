@@ -189,6 +189,28 @@ def test_store_role_answers_tracks_prefilled_and_edited():
     assert by_slot["long_term"].was_edited is False
 
 
+def test_store_role_answers_replace_clears_omitted_slots():
+    """Replace-semantics: a re-submit drops slots not present this time. A blank
+    submit ({}) must wipe a prior run's answers (e.g. stale AI-drafted ones)."""
+    from cv_bau_students.db_models import RoleSpecificAnswer
+
+    profile = _student_profile()
+    cid = repo.store_initial_candidate(file_hash="h-replace", profile=profile, capabilities=[])
+    ad_id = _make_ad()
+    repo.store_role_answers(
+        cid,
+        ad_id,
+        answers={"elevator_pitch": "old", "bi_tool": "Power BI"},
+        prefilled_set=set(),
+        edited_set=set(),
+    )
+    # Re-submit blank → all prior rows gone.
+    repo.store_role_answers(cid, ad_id, answers={}, prefilled_set=set(), edited_set=set())
+    with get_session() as session:
+        n = session.query(RoleSpecificAnswer).filter_by(candidate_id=cid, ad_id=ad_id).count()
+    assert n == 0
+
+
 def test_store_match_upserts():
     profile = _student_profile()
     cid = repo.store_initial_candidate(file_hash="h3", profile=profile, capabilities=[])
@@ -227,6 +249,34 @@ def test_get_candidates_for_ad_only_returns_interested_with_match():
     assert len(rows) == 1
     assert rows[0].candidate_id == cid_1
     assert rows[0].display_name == "Anna"
+
+
+def test_get_candidates_for_ad_survives_duplicate_reasoning_cache():
+    """reasoning_cache keys on (candidate, ad, prompt_hash) → re-runs with a
+    different prompt add rows. _load_match_reasoning must take the latest, not
+    raise MultipleResultsFound."""
+    from cv_bau_students.db import get_session
+    from cv_bau_students.db_models import ReasoningCache
+
+    ad_id = _make_ad()
+    cid = repo.store_initial_candidate(
+        file_hash="h-dupcache", profile=_student_profile("Anna"), capabilities=[]
+    )
+    repo.record_interest(cid, ad_id, "interested")
+    repo.store_match(cid, ad_id, match=_make_match(ad_id, total=75.0))
+
+    with get_session() as session:
+        session.add(
+            ReasoningCache(candidate_id=cid, ad_id=ad_id, prompt_hash="p1", rationale="Starší. X.")
+        )
+        session.add(
+            ReasoningCache(candidate_id=cid, ad_id=ad_id, prompt_hash="p2", rationale="Novější. Y.")
+        )
+
+    rows = repo.get_candidates_for_ad(ad_id)  # must not raise
+    assert len(rows) == 1
+    detail = repo.get_candidate_detail(cid, ad_id)  # same path
+    assert detail is not None
 
 
 def test_get_candidates_for_ad_filters_by_kind():
