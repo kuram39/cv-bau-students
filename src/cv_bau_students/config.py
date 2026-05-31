@@ -14,13 +14,22 @@ PROMPTS_DIR = PACKAGE_ROOT / "prompts"
 DATA_DIR = PACKAGE_ROOT / "data"
 
 # --- Anthropic API ---
-# Opus 4.8 removed sampling parameters (temperature / top_p / top_k) — sending
-# any of them returns 400. Determinism for these JSON-extraction tasks now comes
-# from the frozen prompts, not a temperature setting. Adaptive thinking is left
-# off (field omitted) to preserve the prior no-thinking behaviour and keep the
-# per-call cost down — these are structured extraction calls, not open reasoning.
-LLM_MODEL = "claude-opus-4-8"
+# Default to Sonnet 4.6 — ~40% cheaper than Opus 4.8 ($3/$15 vs $5/$25 per 1M)
+# and the right tier for our mostly-extraction workload. The two interpretive
+# calls (capability translation + recruiter reasoning) opt into adaptive
+# thinking via `llm.call_json(..., think=True)`; the cheap extraction /
+# classification calls stay thinking-off.
+#
+# QUALITY MODE: flip this to "claude-opus-4-8" to A/B the highest-ceiling model
+# (Opus has a stronger ceiling on sparse-signal judgement — translator caveat /
+# confidence calibration). No other change needed: both models take the same
+# request surface (adaptive thinking, no sampling params).
+LLM_MODEL = "claude-sonnet-4-6"
 LLM_MAX_TOKENS = 4096
+# Thinking calls share max_tokens between the (hidden) thinking blocks and the
+# JSON answer — give them headroom so the answer never truncates. Still
+# non-streaming (well under the ~16K timeout threshold).
+LLM_THINK_MAX_TOKENS = 8192
 
 # --- Pipeline budgets ---
 COMPLETION_MAX_ROUNDS = 2

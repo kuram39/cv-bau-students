@@ -15,7 +15,12 @@ import re
 from functools import lru_cache
 from typing import Any
 
-from cv_bau_students.config import LLM_MAX_TOKENS, LLM_MODEL, PROMPTS_DIR
+from cv_bau_students.config import (
+    LLM_MAX_TOKENS,
+    LLM_MODEL,
+    LLM_THINK_MAX_TOKENS,
+    PROMPTS_DIR,
+)
 
 
 @lru_cache(maxsize=1)
@@ -60,13 +65,28 @@ def _strip_fences(text: str) -> str:
     return m.group(1).strip() if m else text.strip()
 
 
-def call_json(prompt: str, *, max_tokens: int = LLM_MAX_TOKENS) -> dict:
-    """Send a single-turn prompt expecting strict JSON output. Returns parsed dict."""
-    msg = _client().messages.create(
-        model=LLM_MODEL,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
+def call_json(prompt: str, *, max_tokens: int = LLM_MAX_TOKENS, think: bool = False) -> dict:
+    """Send a single-turn prompt expecting strict JSON output. Returns parsed dict.
+
+    `think=True` enables adaptive thinking — reserved for the interpretive
+    calls (capability translation, recruiter reasoning) where extra reasoning
+    measurably improves the judgement. The cheap extraction / classification
+    calls leave it off (the default) to keep per-call cost down. Thinking
+    blocks are billed as output, so thinking calls get a larger token budget
+    (`LLM_THINK_MAX_TOKENS`) split between the reasoning and the JSON answer.
+
+    Only `text` blocks are concatenated below, so any thinking blocks in the
+    response are ignored for parsing regardless of this flag.
+    """
+    kwargs: dict = {
+        "model": LLM_MODEL,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if think:
+        kwargs["thinking"] = {"type": "adaptive"}
+        kwargs["max_tokens"] = max(max_tokens, LLM_THINK_MAX_TOKENS)
+    msg = _client().messages.create(**kwargs)
     raw = "".join(block.text for block in msg.content if getattr(block, "type", None) == "text")
     payload = _strip_fences(raw)
     try:

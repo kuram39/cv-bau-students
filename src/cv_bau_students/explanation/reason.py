@@ -48,7 +48,10 @@ def reason(
         if cached is not None:
             return cached
 
-    payload = llm.call_json(prompt)
+    # Interpretive call — adaptive thinking improves the recruiter rationale
+    # (strengths / gaps / interview-prompt synthesis). Result is cached, so the
+    # extra cost is paid at most once per (candidate, ad, prompt).
+    payload = llm.call_json(prompt, think=True)
     rationale = json.dumps(payload, ensure_ascii=False)
 
     if candidate_id is not None and match.ad_id is not None:
