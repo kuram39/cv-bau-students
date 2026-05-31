@@ -133,6 +133,28 @@ def test_recruiter_panel_handles_missing_ad(monkeypatch):
     fake.warning.assert_called()
 
 
+def test_legacy_skill_fit_detail_still_shows_role_coverage(monkeypatch):
+    """A pre-Phase-B detail (isco_code set, target_source=None) must still
+    render its ESCO role coverage — not be hidden by the target_source guard."""
+    from cv_bau_students.models import SkillFitDetail
+
+    fake = _fake_st()
+    monkeypatch.setattr(recruiter_panel, "st", fake)
+    legacy = SkillFitDetail(
+        isco_code="2511",
+        occupation_label="data analyst",
+        target_source=None,  # legacy row
+        role_essential_total=10,
+        role_essential_evidenced=3,
+        role_essential_matched=["SQL"],
+        bonus_applied=6.0,
+    )
+    recruiter_panel._render_skill_fit_detail(legacy)
+    captions = " ".join(str(c.args[0]) for c in fake.caption.call_args_list if c.args)
+    assert "Role coverage" in captions
+    assert "ISCO 2511" in captions
+
+
 def test_recruiter_detail_renders(monkeypatch):
     ad_id, ad = _seed_candidate_for_ad()
     fake = _fake_st()

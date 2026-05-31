@@ -76,16 +76,18 @@ def _languages(record: dict) -> list[LanguageRequirement]:
 
 
 def _truncate_job_ads() -> None:
-    """Idempotent: wipe the job_ads + job_ad_skills tables before each
+    """Idempotent: wipe the job_ads + ad-owned child tables before each
     normalisation run so re-loading the scraped corpus doesn't pile up
-    duplicate rows."""
+    duplicate rows — and so recruiter-curated target skills don't orphan
+    and re-attach to a reused ad id."""
     from sqlalchemy import delete
 
     from cv_bau_students.db import get_session
-    from cv_bau_students.db_models import JobAdRow, JobAdSkill
+    from cv_bau_students.db_models import AdTargetSkill, JobAdRow, JobAdSkill
 
     with get_session() as session:
         session.execute(delete(JobAdSkill))
+        session.execute(delete(AdTargetSkill))
         session.execute(delete(JobAdRow))
 
 

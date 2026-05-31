@@ -119,10 +119,18 @@ def _render_target_skill_picker(ad: JobAd) -> None:
                 core=[name_to_id[n] for n in chosen_core if n in name_to_id],
                 optional=[name_to_id[n] for n in chosen_opt if n in name_to_id],
             )
-            st.success(
-                f"Uloženo: {len(chosen_core)} core + {len(chosen_opt)} optional. "
-                "Přepočítej skóre (re-run analýzy / seed) pro projevení změny."
-            )
+            if not chosen_core and not chosen_opt:
+                # Empty selection = no curation → matcher uses the full ESCO
+                # role set. Say so, rather than implying scoring uses "nothing".
+                st.info(
+                    "Prázdný výběr — kurátorská sada zrušena. Skóre použije výchozí "
+                    "ESCO sadu role (essential+optional). Přepočítej skóre."
+                )
+            else:
+                st.success(
+                    f"Uloženo: {len(chosen_core)} core + {len(chosen_opt)} optional. "
+                    "Přepočítej skóre (re-run analýzy / seed) pro projevení změny."
+                )
 
 
 def _render_column(ad_id: int, *, kind: str) -> None:
@@ -233,7 +241,10 @@ def _render_skill_fit_detail(d) -> None:
     if d.missing_must:
         st.caption(f"❌ Chybí must: {', '.join(d.missing_must)}")
 
-    if d.target_source:
+    # Legacy match rows (pre-target_source) carry isco_code/coverage but no
+    # target_source — fall back to "isco" so their role coverage still shows
+    # without needing every stored match recomputed.
+    if d.target_source or d.isco_code:
         bonus = f" · bonus +{d.bonus_applied:.0f}" if d.bonus_applied else ""
         if d.target_source == "curated":
             src = "náborářem vybrané cílové dovednosti"

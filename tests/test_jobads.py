@@ -101,6 +101,34 @@ def test_target_skills_suggest_and_roundtrip():
     assert got.get("optional", set()) == set()
 
 
+def test_truncate_job_ads_clears_target_skills():
+    """Reloading the ad corpus must not orphan recruiter-curated target skills."""
+    from scripts.normalise_scraped_ads import _truncate_job_ads
+
+    with get_session() as session:
+        s = Skill(canonical_name="data mining", canonical_name_en="data mining", esco_uri="uri:dm")
+        session.add(s)
+        session.flush()
+        sid = s.id
+        ad = JobAdRow(
+            title="Data Analyst",
+            location="Praha",
+            remote_mode="hybrid",
+            level="junior",
+            domain="data-analyst",
+            source="scraped",
+            raw_text="...",
+        )
+        session.add(ad)
+        session.flush()
+        ad_id = ad.id
+    set_target_skills(ad_id, core=[sid], optional=[])
+    assert get_target_skills(ad_id) is not None
+
+    _truncate_job_ads()
+    assert get_target_skills(ad_id) is None  # not orphaned
+
+
 def test_store_ad_then_list_returns_normalised_skills():
     _seed_taxonomy()
     ad = _example_ad()
