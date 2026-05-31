@@ -179,11 +179,26 @@ def _render_column(ad_id: int, *, kind: str) -> None:
         _render_candidate_row(ad_id, summary)
 
 
+def _confidence_label(band: float) -> str:
+    """Translate the confidence band (smaller = surer) into a plain word.
+
+    The band comes from the translator's average capability confidence, NOT
+    from the coverage % (which is an exact count). So we show it as a separate
+    'how sure are we about the CV reading' signal, not a ± on the number.
+    """
+    if band <= 10:
+        return "vysoká"
+    if band <= 20:
+        return "střední"
+    return "nízká"
+
+
 def _render_candidate_row(ad_id: int, summary) -> None:
     badge = TYPE_BADGE.get(summary.kind, "❓")
     header = (
         f"{badge} · {summary.display_name} · "
-        f"**{summary.total:.0f}** ± {summary.confidence_band:.0f}"
+        f"**{summary.total:.0f} %** · spolehlivost překladu CV: "
+        f"{_confidence_label(summary.confidence_band)}"
     )
     with st.container():
         st.markdown(header)
