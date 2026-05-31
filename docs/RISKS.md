@@ -55,6 +55,30 @@ needs ground-truth data.
 | 20 | Two skill namespaces (hand-seed vs ESCO) | Yes — broke target-role enrichment | ✅ `resolve_skill_esco` (taxonomy/repo) resolves candidate skills into the ESCO namespace; translate emits an English `esco_term` per capability → stored ESCO `skill_id`. Enrichment now intersects the occupation's essential∪optional set. must/nice/bridge stay seed-space (works); full namespace unification (move job_ad_skills + level_checklists onto ESCO ids) deferred — needs a loader rewrite + seed rebuild |
 | 21 | Skill resolution drop (~half of free-text phrases) | Partial | 🟡 Layer-1 = diacritics-strip + ESCO aliases + rapidfuzz (token_sort ≥92); LLM `esco_term` handles cross-lingual/paraphrase (`datové modelování`→`data modelling`). Residual misses: vendor tools absent from ESCO (`Power BI`, `Tableau`), and phrases neither lexically nor LLM-mapped. Next: Czech lemmatisation (`simplemma`), embedding retrieval in the seed (Phase C), full NSP pull for Czech aliases (Phase D) |
 
+### NSP / CZ-ISCO occupation→skill map — evaluated, REJECTED (data-backed)
+
+This PR wires the NSP/CDK live API loader. We probed whether to go further and build
+a **Czech-native occupation→skill map** keyed on CZ-ISCO (the obvious "use the Czech
+labour-market data" move). The live API supports the chain —
+`GET /api/v1.2/workUnit` (1,752 occupations) → `/workUnit/{slug}/isco` (CZ-ISCO, e.g.
+`22629`) → `/workUnit/{slug}/competence` (`competences`/`softSkills`/`genericSkills`) —
+but the **data doesn't fit the matcher**:
+
+- NSP `competences` are granular, occupation-specific *descriptive phrases* (e.g.
+  *"Zpracovávání metodik analýz v oboru farmacie a kontroly léčiv…"*) that resolve to
+  neither ESCO skill ids nor candidate CV phrases.
+- The reusable parts (`genericSkills`, `softSkills`) are the broad/soft signals we
+  deliberately keep OUT of `skill_fit` (person ≠ role).
+- **CZ-ISCO *is* ISCO-08** (5-digit Czech extension; truncate→4 = same unit group), so
+  NSP adds no new occupation backbone — ESCO already supplies occupation→skill keyed on
+  ISCO with a cleaner, reusable skill taxonomy.
+
+**Decision:** keep NSP's real value — Czech skill-name **aliases** on ESCO skills (what
+this loader does) — and keep the occupation→skill join ESCO-driven. Building the
+CZ-ISCO map (~3,500 API calls for a granular, poorly-matching parallel skill set) is
+not worth it. Revisit only if Czech resolution proves weak after a keyed `esco_term`
+re-translate.
+
 ## Recommended interview-answer order
 
 > **"Co padne první?"**
