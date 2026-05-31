@@ -94,14 +94,15 @@ def _fetch_list(endpoint: str) -> list[dict]:
     return data
 
 
-def _fetch_competence_paginated(page_size: int = 200, max_pages: int = 200) -> list[dict]:
+def _fetch_competence_paginated(page_size: int = 100, max_pages: int = 500) -> list[dict]:
     """Pull the offset-paginated hard-skill catalogue (``/cdk/competence``,
     ~10k rows) and normalise to the ``_persist_competency`` dict shape.
 
     These titles are concrete Czech skill/knowledge names ("2D a 3D grafické
     počítačové programy"), unlike the per-occupation work-unit phrases — so in
     ``--aliases-only`` mode they become useful Czech aliases on matching ESCO
-    skills. `max_pages` is a runaway guard."""
+    skills. `page_size` max is 100 (API enforces 1..100; >100 → HTTP 400);
+    `max_pages` is a runaway guard (~10k rows / 100 = 100 pages)."""
     comps: list[dict] = []
     offset = 0
     for _ in range(max_pages):
