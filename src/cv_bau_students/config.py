@@ -26,10 +26,14 @@ DATA_DIR = PACKAGE_ROOT / "data"
 # request surface (adaptive thinking, no sampling params).
 LLM_MODEL = "claude-sonnet-4-6"
 LLM_MAX_TOKENS = 4096
-# Thinking calls share max_tokens between the (hidden) thinking blocks and the
-# JSON answer — give them headroom so the answer never truncates. Still
-# non-streaming (well under the ~16K timeout threshold).
-LLM_THINK_MAX_TOKENS = 8192
+# Thinking calls: max_tokens is the TOTAL budget shared by the (hidden) thinking
+# blocks and the JSON answer. With adaptive thinking at 8192 the model spent the
+# whole budget thinking and never emitted the answer (stop_reason=max_tokens,
+# blocks=['thinking']). So we cap thinking explicitly via `budget_tokens` and
+# size max_tokens to leave guaranteed answer room: 12000 total = up to 8000
+# thinking + ≥4000 for the JSON. Stays under the ~16K non-streaming threshold.
+LLM_THINK_MAX_TOKENS = 12000
+LLM_THINK_BUDGET = 8000  # thinking cap; must be < LLM_THINK_MAX_TOKENS
 
 # --- Pipeline budgets ---
 COMPLETION_MAX_ROUNDS = 2
