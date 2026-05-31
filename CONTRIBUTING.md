@@ -48,11 +48,41 @@ not direct commits.
    gh pr merge --squash --delete-branch
    ```
 
+## Branch protection enforcement
+
+Hard branch protection on `main` (blocking a merge until `ci` is green)
+requires **GitHub Pro** for a *private* repo, or making the repo
+**public**. On the current free + private tier the rule can't be set
+via the API (`403: Upgrade to GitHub Pro or make this repository
+public`).
+
+What still works without it:
+- **CI runs on every PR and every push** — the red/green status is
+  visible on each PR; the convention is *do not merge a red PR*.
+- The branch → PR flow gives the audit trail regardless of enforcement.
+
+To turn on hard enforcement, pick one:
+1. **GitHub Pro** (~$4/mo) → then run:
+   ```bash
+   gh api -X PUT repos/buhlez31/cv-bau-students/branches/main/protection \
+     --input - <<'JSON'
+   {
+     "required_status_checks": {"strict": true, "contexts": ["ci"]},
+     "enforce_admins": false,
+     "required_pull_request_reviews": {"required_approving_review_count": 0},
+     "restrictions": null
+   }
+   JSON
+   ```
+   Or in the UI: **Settings → Branches → Add branch ruleset →** target
+   `main`, require status check `ci`, require a PR before merging.
+2. **Make the repo public** → the same API call / UI path works for free.
+
 ## Notes
 
-- **Solo repo:** branch protection requires a passing CI check and a PR,
-  but does not require a second reviewer's approval (there isn't one).
-  The value is the audit trail + the merge gate, not human review.
+- **Solo repo:** the gate is a passing CI check and a PR — it does not
+  require a second reviewer's approval (there isn't one). The value is
+  the audit trail + the merge gate, not human review.
 - **No secrets in CI:** tests mock all LLM calls and use an in-memory
   SQLite fixture, so CI needs no `ANTHROPIC_API_KEY`.
 - **The owner keeps an escape hatch:** `enforce_admins` is off, so the
