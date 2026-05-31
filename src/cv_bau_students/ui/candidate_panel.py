@@ -29,6 +29,9 @@ TYPE_BADGE = {
     "experienced": "💼 Experienced",
 }
 
+# Tweet-length cap per role-question answer; enforced as a hard filter on submit.
+MAX_ANSWER_CHARS = 280
+
 
 def render_candidate_panel(target_ad: JobAd | None = None) -> None:
     """Single-target demo: every uploaded CV is matched against ONE
@@ -179,7 +182,9 @@ def _step_role_form() -> None:
     st.markdown("### 📝 Pár otázek k pozici")
     st.caption(
         "Tyto doplňující otázky pomáhají odhalit dovednosti, které z CV nemusí "
-        "být patrné. Odpověz vlastními slovy. Otázky jsou stejné pro všechny uchazeče."
+        "být patrné. Odpověz vlastními slovy, **stručně — max "
+        f"{MAX_ANSWER_CHARS} znaků** na odpověď (jako tweet). Otázky jsou stejné "
+        "pro všechny uchazeče. **Vyplň všechny** — bez toho přihlášku nelze odeslat."
     )
 
     with st.form("role_form"):
@@ -188,10 +193,30 @@ def _step_role_form() -> None:
         for q in interest.prefilled_questions:
             default = q.prefilled_answer or ""
             prefilled_defaults[q.slot] = default
-            inputs[q.slot] = st.text_area(q.question_text, value=default, key=f"rf_{q.slot}")
+            inputs[q.slot] = st.text_area(
+                q.question_text,
+                value=default,
+                key=f"rf_{q.slot}",
+                max_chars=MAX_ANSWER_CHARS,
+                help=f"Max {MAX_ANSWER_CHARS} znaků.",
+            )
         submitted = st.form_submit_button("Odeslat přihlášku", type="primary")
 
     if submitted:
+        stripped = {s: v.strip() for s, v in inputs.items()}
+        # Hard filter: every question required + max length enforced.
+        missing = [s for s, v in stripped.items() if not v]
+        too_long = [s for s, v in stripped.items() if len(v) > MAX_ANSWER_CHARS]
+        if missing:
+            st.error(
+                f"Vyplň prosím všechny otázky ({len(missing)} zatím prázdná) — "
+                "přihlášku nelze odeslat s prázdnou odpovědí."
+            )
+            return
+        if too_long:
+            st.error(f"Některé odpovědi přesahují {MAX_ANSWER_CHARS} znaků. Zkrať je.")
+            return
+
         prefilled_set = {s for s, d in prefilled_defaults.items() if d}
         edited_set = {
             s
