@@ -17,16 +17,26 @@ Usage:
     python scripts/load_nsp.py --source data/raw_nsp/competencies.json
     python scripts/load_nsp.py --api                       # pull live
 
-API base (subject to change — verify before each run):
-    https://data.mpsv.cz/od/soubory/sablona-nsp-kompetence
-    https://portal.mpsv.cz/sus/api/
+Live API (CDK — Centrální databáze kompetencí, no auth, public):
+    https://nsp.cz/api/v1.2/cdk/soft-skill   # měkké (transversal) kompetence
+    https://nsp.cz/api/v1.2/cdk/digi         # digitální kompetence
+Each returns ``{"code":200,"data":[{...}]}``; we fetch the full list in one
+request (these two endpoints are not paginated). The hard-skill catalogue lives
+at ``/api/v1.2/cdk/competence`` but is offset-paginated over ~10k rows with a
+numeric ``type`` taxonomy — left for a follow-up (see ``_fetch_from_api``).
 
-License: CC0 (data.mpsv.cz open data terms).
+NOTE: the CDK competency lists carry NO CZ-ISCO occupation codes — linking
+competencies to CZ-ISCO via NSP work-units is a separate follow-up; we persist
+``cz_isco=[]`` here.
+
+License: CC0 (data.mpsv.cz / NSP open data terms).
 """
 
 import argparse
 import json
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from sqlalchemy import select, update
@@ -55,6 +65,80 @@ def _load_local(path: Path) -> list[dict]:
         print(f"NSP source not found: {path}", file=sys.stderr)
         sys.exit(2)
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+# Live CDK endpoints (no auth; Accept: application/json). Both return the full
+# list in a single response — unlike /cdk/competence (hard skills), which is
+# offset-paginated over ~10k rows and left for a follow-up.
+_API_BASE = "https://nsp.cz/api/v1.2/cdk"
+_API_TIMEOUT = 20  # seconds — never hang
+
+
+def _fetch_list(endpoint: str) -> list[dict]:
+    """GET ``{_API_BASE}/{endpoint}`` and return the ``data`` list.
+
+    Uses only the stdlib (urllib) — no new dependency. Raises on any
+    transport/parse error; the caller turns that into a clean non-zero exit.
+    """
+    url = f"{_API_BASE}/{endpoint}"
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=_API_TIMEOUT) as resp:  # noqa: S310
+        payload = json.loads(resp.read().decode("utf-8"))
+    data = payload.get("data")
+    if not isinstance(data, list):
+        raise ValueError(f"unexpected CDK response shape from {url}: missing 'data' list")
+    return data
+
+
+def _fetch_from_api() -> list[dict]:
+    """Pull live CDK soft-skill + digi competencies and normalise to the
+    ``_persist_competency`` dict shape.
+
+    Mapping (CDK item -> competency dict):
+      * nazev    = title
+      * synonyma = [title]  the only reliable Czech phrasing the CDK lists give.
+                   We register it as an explicit cs/nsp alias so the title is
+                   reachable through the alias index, not just canonical_name.
+                   The CDK lists expose no other synonym-like field
+                   (``legacySoftSkillCode`` is an opaque code like "a04", not a
+                   human alias), so we add nothing else.
+      * typ      = a Czech type string _map_type understands:
+                     soft-skill -> "měkká kompetence" -> "transversal"
+                     digi       -> "odborná digitální dovednost" -> "skill"
+      * kod      = code  (CDK competency code, e.g. "1.1")
+      * cz_isco  = []  (CDK lists carry no ISCO; CZ-ISCO join is a follow-up)
+    """
+    comps: list[dict] = []
+
+    for item in _fetch_list("soft-skill"):
+        title = (item.get("title") or "").strip()
+        if not title:
+            continue
+        comps.append(
+            {
+                "kod": (item.get("code") or "").strip(),
+                "nazev": title,
+                "synonyma": [title],
+                "typ": "měkká kompetence",
+                "cz_isco": [],
+            }
+        )
+
+    for item in _fetch_list("digi"):
+        title = (item.get("title") or "").strip()
+        if not title:
+            continue
+        comps.append(
+            {
+                "kod": (item.get("code") or "").strip(),
+                "nazev": title,
+                "synonyma": [title],
+                "typ": "odborná digitální dovednost",
+                "cz_isco": [],
+            }
+        )
+
+    return comps
 
 
 def _persist_competency(comp: dict) -> tuple[int, int]:
@@ -130,19 +214,22 @@ def _map_type(nsp_type: str) -> str:
     return "skill"
 
 
-def main_args(*, source: Path, api: bool = False, verbose: bool = True) -> int:
+def main_args(*, source: Path | None = None, api: bool = False, verbose: bool = True) -> int:
     """Programmatic entry point — usable from tests."""
     init_db()
 
     if api:
-        print(
-            "NSP live API path not yet wired — see docs/TAXONOMY_SOURCES.md\n"
-            "Download CDK competency CSV from data.mpsv.cz and convert to JSON.",
-            file=sys.stderr,
-        )
-        return 1
+        try:
+            competencies = _fetch_from_api()
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
+            print(f"NSP CDK live fetch failed: {exc}", file=sys.stderr)
+            return 1
+    elif source is None:
+        print("No --source given and --api not set.", file=sys.stderr)
+        return 2
+    else:
+        competencies = _load_local(source)
 
-    competencies = _load_local(source)
     touched = 0
     aliases = 0
     for comp in competencies:

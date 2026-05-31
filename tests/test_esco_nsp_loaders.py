@@ -146,3 +146,87 @@ def test_nsp_loader_attaches_to_existing_esco_match():
         row = s.get(Skill, match[0])
         assert row.esco_uri is not None  # still tagged ESCO
         assert row.nsp_code == "k-nsp-py"  # got NSP code too
+
+
+# Raw CDK list shapes — what /cdk/soft-skill and /cdk/digi `data` items look like.
+_FAKE_CDK_SOFT = [
+    {
+        "id": 1,
+        "title": "Kompetence k flexibilitě",
+        "description": "...",
+        "partialCompetence": "...",
+        "type": 1,
+        "legacySoftSkillCode": "a04",
+        "code": "1.2",
+    }
+]
+_FAKE_CDK_DIGI = [
+    {
+        "id": 1,
+        "titleEn": "evaluating data, information and digital content",
+        "title": "Hodnocení dat, informací a digitálního obsahu",
+        "description": "...",
+        "type": 1,
+        "code": "1.2",
+    }
+]
+
+
+def _fake_fetch_list(endpoint: str):
+    if endpoint == "soft-skill":
+        return _FAKE_CDK_SOFT
+    if endpoint == "digi":
+        return _FAKE_CDK_DIGI
+    raise AssertionError(f"unexpected endpoint {endpoint}")
+
+
+def test_nsp_api_path_persists_cdk_competencies():
+    """The --api path transforms CDK items and persists them as cs/nsp skills.
+
+    Mocks the urllib boundary (`_fetch_list`) — no live network.
+    """
+    with patch.object(load_nsp, "_fetch_list", side_effect=_fake_fetch_list):
+        rc = load_nsp.main_args(api=True)
+    assert rc == 0
+
+    # Soft-skill -> transversal skill, resolvable by its Czech title.
+    soft = resolve_skill("Kompetence k flexibilitě")
+    assert soft is not None
+    with get_session() as s:
+        soft_row = s.get(Skill, soft[0])
+        assert soft_row.skill_type == "transversal"
+        assert soft_row.nsp_code == "1.2"
+
+    # Digi -> "skill" type, resolvable by its Czech title.
+    digi = resolve_skill("Hodnocení dat, informací a digitálního obsahu")
+    assert digi is not None
+    with get_session() as s:
+        digi_row = s.get(Skill, digi[0])
+        assert digi_row.skill_type == "skill"
+
+    # A cs alias with source="nsp" exists for the title (lowercased).
+    with get_session() as s:
+        alias = (
+            s.query(SkillAlias)
+            .filter(
+                SkillAlias.alias == "kompetence k flexibilitě",
+                SkillAlias.lang == "cs",
+                SkillAlias.source == "nsp",
+            )
+            .one_or_none()
+        )
+        assert alias is not None
+        assert alias.canonical_id == soft[0]
+
+
+def test_nsp_api_path_handles_fetch_failure_without_hanging():
+    """Any urllib/transport error -> clean non-zero exit, no exception."""
+    import urllib.error
+
+    with patch.object(
+        load_nsp,
+        "_fetch_list",
+        side_effect=urllib.error.URLError("boom"),
+    ):
+        rc = load_nsp.main_args(api=True)
+    assert rc == 1
