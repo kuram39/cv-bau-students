@@ -78,6 +78,12 @@ class TranslatedCapabilityRow(Base):
     caveat: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_type: Mapped[str] = mapped_column(String(32))
     relevance: Mapped[str] = mapped_column(String(16))
+    # ESCO normalisation (see models.TranslatedCapability): English label the
+    # LLM mapped this capability to, and the resolved ESCO skill id. The id
+    # lets the matcher compare candidate skills against an occupation's ESCO
+    # skill set in one namespace. None when unresolved.
+    esco_term: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    esco_skill_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

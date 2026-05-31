@@ -5,10 +5,10 @@ script can populate them end-to-end against an in-memory engine.
 """
 
 from scripts.load_seeds import _load_checklists, _load_taxonomy, _truncate_taxonomy
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from cv_bau_students.config import LEVEL_CHECKLISTS_CSV, TAXONOMY_SEED_CSV
-from cv_bau_students.db import _engine, get_session
+from cv_bau_students.db import _engine, _migrate_columns, get_session
 from cv_bau_students.db_models import LevelChecklist, Skill, SkillAlias
 
 
@@ -36,6 +36,24 @@ def test_init_db_creates_all_tables():
         "role_specific_answers",
     }
     assert expected.issubset(table_names), f"missing tables: {expected - table_names}"
+
+
+def test_migrate_columns_adds_missing_column():
+    """An old table missing a newer ORM column gets it back via ALTER ADD."""
+    engine = _engine()
+    with engine.begin() as conn:
+        # Simulate a pre-migration schema: rebuild job_ads without isco_code.
+        conn.execute(text("DROP TABLE job_ads"))
+        conn.execute(text("CREATE TABLE job_ads (id INTEGER PRIMARY KEY, title TEXT)"))
+    _migrate_columns()
+    with engine.begin() as conn:
+        cols = {r[1] for r in conn.execute(text("PRAGMA table_info('job_ads')"))}
+    # Newer nullable columns are added back.
+    assert "isco_code" in cols
+    assert "isco_occupation_label" in cols
+    # raw_text is NOT NULL without a default → deliberately skipped (can't be
+    # safely added to a populated table; create_all owns it on fresh DBs).
+    assert "raw_text" not in cols
 
 
 def test_load_seeds_populates_taxonomy_and_checklists():

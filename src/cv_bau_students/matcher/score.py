@@ -37,7 +37,9 @@ from cv_bau_students.models import (
 from cv_bau_students.taxonomy.repo import (
     expected_skills_for_isco,
     names_for_ids,
+    resolve_many_esco,
     resolve_skill,
+    resolve_skill_esco,
 )
 
 
@@ -51,7 +53,19 @@ def score_match(
     ad_must_ids = _resolve_iterable(ad.must_have)
     ad_nice_ids = _resolve_iterable(ad.nice_to_have)
 
-    skill_fit, skill_fit_detail = _skill_fit(candidate_skill_ids, ad_must_ids, ad_nice_ids, ad)
+    # ESCO-namespace sets — only for the target-role enrichment, so candidate
+    # skills share the occupation map's id space. Base must/nice stays seed-space.
+    candidate_esco_ids = _resolve_candidate_esco_ids(capabilities, profile)
+    must_esco_ids = resolve_many_esco(ad.must_have)
+
+    skill_fit, skill_fit_detail = _skill_fit(
+        candidate_skill_ids,
+        ad_must_ids,
+        ad_nice_ids,
+        ad,
+        candidate_esco_ids,
+        must_esco_ids,
+    )
     gaps = bridge_plan(ad.domain, ad.level, candidate_skill_ids)
     has_rubric = checklist_exists(ad.domain, ad.level)
     bridge_fit = _bridge_fit(gaps, has_rubric=has_rubric)
@@ -90,7 +104,12 @@ def score_match(
 
 
 def _skill_fit(
-    candidate: set[int], must: set[int], nice: set[int], ad: JobAd
+    candidate: set[int],
+    must: set[int],
+    nice: set[int],
+    ad: JobAd,
+    candidate_esco: set[int],
+    must_esco: set[int],
 ) -> tuple[float, SkillFitDetail]:
     """Must-have hits weighted 2× nice-to-have, plus a capped ESCO bonus.
 
@@ -106,13 +125,15 @@ def _skill_fit(
     plus a `SkillFitDetail` audit trail for the recruiter panel.
     """
     base = _base_skill_fit(candidate, must, nice)
+    # One name lookup for all three must/nice subsets (was three queries).
+    namemap = names_for_ids((candidate & must) | (must - candidate) | (candidate & nice))
     detail = SkillFitDetail(
-        matched_must=_names(candidate & must),
-        missing_must=_names(must - candidate),
-        matched_nice=_names(candidate & nice),
+        matched_must=_sorted_names(candidate & must, namemap),
+        missing_must=_sorted_names(must - candidate, namemap),
+        matched_nice=_sorted_names(candidate & nice, namemap),
     )
 
-    base, detail = _apply_role_enrichment(base, detail, candidate, must, ad)
+    base, detail = _apply_role_enrichment(base, detail, candidate_esco, must_esco, ad)
     return min(100.0, base), detail
 
 
@@ -129,35 +150,68 @@ def _base_skill_fit(candidate: set[int], must: set[int], nice: set[int]) -> floa
 def _apply_role_enrichment(
     base: float,
     detail: SkillFitDetail,
-    candidate: set[int],
-    must: set[int],
+    candidate_esco: set[int],
+    must_esco: set[int],
     ad: JobAd,
 ) -> tuple[float, SkillFitDetail]:
-    """Fold ESCO occupation-essential coverage into skill_fit + the audit."""
+    """Fold ESCO occupation skill coverage into skill_fit + the audit.
+
+    Uses the ESCO-namespace candidate set so it actually intersects the
+    occupation map. Counts the occupation's essential ∪ optional skills
+    (optional is where common tools like SQL land in ESCO). Capped bonus,
+    base untouched — enrichment only lifts.
+    """
     if not ad.isco_code:
         return base, detail
-    essential = set(expected_skills_for_isco(ad.isco_code, "essential"))
-    if not essential:
+    role_set = set(expected_skills_for_isco(ad.isco_code, "essential")) | set(
+        expected_skills_for_isco(ad.isco_code, "optional")
+    )
+    if not role_set:
         return base, detail
 
-    extra = (candidate & essential) - must  # role-essential beyond the must-haves
+    evidenced = candidate_esco & role_set
+    extra = evidenced - must_esco  # role skills beyond the recruiter must-haves
     bonus = min(ROLE_BONUS_CAP, len(extra) * ROLE_BONUS_PER)
 
-    missing_sample = sorted(essential - candidate)[:ROLE_ESSENTIAL_GAP_SAMPLE]
+    missing_sample = set(sorted(role_set - candidate_esco)[:ROLE_ESSENTIAL_GAP_SAMPLE])
+    namemap = names_for_ids(evidenced | missing_sample)  # one lookup for both lists
     detail.isco_code = ad.isco_code
     detail.occupation_label = ad.isco_occupation_label
-    detail.role_essential_total = len(essential)
-    detail.role_essential_evidenced = len(candidate & essential)
-    detail.role_essential_matched = _names(candidate & essential)
-    detail.role_essential_missing = _names(missing_sample)
+    detail.role_essential_total = len(role_set)
+    detail.role_essential_evidenced = len(evidenced)
+    detail.role_essential_matched = _sorted_names(evidenced, namemap)
+    detail.role_essential_missing = _sorted_names(missing_sample, namemap)
     detail.bonus_applied = round(bonus, 1)
     return base + bonus, detail
 
 
-def _names(skill_ids: Iterable[int]) -> list[str]:
-    """Resolve a set/list of skill_ids to sorted canonical names."""
-    mapping = names_for_ids(skill_ids)
-    return sorted(mapping.values())
+def _resolve_candidate_esco_ids(
+    capabilities: list[TranslatedCapability],
+    profile: CandidateProfile,
+) -> set[int]:
+    """Candidate skills in the ESCO namespace, for target-role enrichment.
+
+    Prefers each capability's stored/translated `skill_id` (the LLM-mapped
+    ESCO link); falls back to resolving `esco_term`/`skill` for legacy rows
+    that predate the mapping. Explicit CV skills are resolved straight into
+    ESCO via the fuzzy resolver.
+    """
+    ids: set[int] = set()
+    for cap in capabilities:
+        if cap.skill_id is not None:
+            ids.add(cap.skill_id)
+            continue
+        match = resolve_skill_esco(cap.esco_term or cap.skill)
+        if match:
+            ids.add(match[0])
+    ids |= resolve_many_esco(profile.explicit_skills)
+    return ids
+
+
+def _sorted_names(skill_ids: Iterable[int], namemap: dict[int, str]) -> list[str]:
+    """Sorted canonical names for the given ids, using a prebuilt name map
+    (so callers batch one `names_for_ids` query instead of one per subset)."""
+    return sorted(namemap[i] for i in skill_ids if i in namemap)
 
 
 def _bridge_fit(gaps: list[GapItem], *, has_rubric: bool) -> float | None:

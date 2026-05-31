@@ -162,6 +162,8 @@ def store_initial_candidate(
                     caveat=cap.caveat,
                     source_type=cap.source_type,
                     relevance=getattr(cap, "relevance", "direct"),
+                    esco_term=cap.esco_term,
+                    esco_skill_id=cap.skill_id,
                 )
             )
 
@@ -384,6 +386,8 @@ def get_candidate_detail(candidate_id: int, ad_id: int) -> CandidateDetail | Non
                 caveat=c.caveat,
                 source_type=c.source_type,
                 relevance=c.relevance,
+                esco_term=c.esco_term,
+                skill_id=c.esco_skill_id,
             )
             for c in cap_rows
         ]

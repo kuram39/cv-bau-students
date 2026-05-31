@@ -247,10 +247,26 @@ def resolve_ad_isco(ad_id: int) -> tuple[str | None, str | None, str]:
     if ad is None:
         raise LookupError(f"ad_id {ad_id} not found")
     isco_code, label, method = resolve_isco_for_ad(ad.title, ad.domain, ad.must_have)
-    set_ad_fields_and_skills(
-        ad_id,
-        isco_code=isco_code,
-        isco_occupation_label=label,
-        isco_method=method,
-    )
+    # Always-write path: a re-resolution that now yields "unresolved" must
+    # CLEAR a previously stored code, else the matcher keeps applying ESCO
+    # enrichment for the stale role. `set_ad_fields_and_skills` skips None
+    # values by design, so it can't clear — use the dedicated setter.
+    set_ad_isco(ad_id, isco_code=isco_code, occupation_label=label, method=method)
     return isco_code, label, method
+
+
+def set_ad_isco(
+    ad_id: int,
+    *,
+    isco_code: str | None,
+    occupation_label: str | None,
+    method: str | None,
+) -> None:
+    """Overwrite an ad's ISCO fields unconditionally (None clears them)."""
+    with get_session() as session:
+        row = session.get(JobAdRow, ad_id)
+        if row is None:
+            raise LookupError(f"ad_id {ad_id} not found")
+        row.isco_code = isco_code
+        row.isco_occupation_label = occupation_label
+        row.isco_method = method

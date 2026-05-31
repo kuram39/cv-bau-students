@@ -125,6 +125,25 @@ def test_reason_skips_cache_when_no_candidate_id():
     assert mock_call.call_count == 2
 
 
+def test_reason_cache_busts_on_model_change(monkeypatch):
+    """Switching the model must NOT serve a stale cached rationale."""
+    import cv_bau_students.explanation.reason as reason_mod
+
+    profile = _student_profile()
+    candidate_id = _seed_candidate()
+    ad_id = store_ad(_ad())
+    match = _match_score(ad_id)
+    ad = _ad().model_copy(update={"id": ad_id})
+
+    with patch("cv_bau_students.llm.call_json", return_value=_FAKE_PAYLOAD) as mock_call:
+        monkeypatch.setattr(reason_mod, "LLM_MODEL", "claude-sonnet-4-6")
+        reason(profile, [], match, ad, candidate_id=candidate_id)
+        monkeypatch.setattr(reason_mod, "LLM_MODEL", "claude-opus-4-8")
+        reason(profile, [], match, ad, candidate_id=candidate_id)
+
+    assert mock_call.call_count == 2  # different model → different key → fresh call
+
+
 def test_reason_includes_capabilities_in_prompt():
     profile = _student_profile()
     candidate_id = _seed_candidate()

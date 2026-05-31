@@ -29,6 +29,7 @@ Status legend:
 | 8 | Skill taxonomy is mock (50 skills) | Many real CV skills miss the canonical name → 0 alias hits | 🟡 ESCO v1.2.1 documented in `docs/TAXONOMY_SOURCES.md` — 13 939 skills, native Czech, CC BY 4.0 download. Effort to load: ~8-12 h | Same |
 | 9 | Bridge fit lied (100.0) when no rubric | Recruiter saw "perfect ready" on uncalibrated domain | ✅ `checklist_exists` + `-1.0` sentinel; matcher drops bridge axis from weighted sum when absent | Broaden checklists to cover every domain in corpus |
 | 10 | Long ad / CV body fills the LLM context | Reasoning pass against 5 ads + profile approaches Claude's 200K token cap on extreme inputs | 🟡 Quick: truncate `raw_text` at ingest to 2000 chars. Real (planned): LLM-summarize each ad once at ingest, persist summary, reasoning reads summary | LLM summary at ingest (~$0.001 / ad one-time) |
+| 22 | `skill_fit` resolves audit names per scored ad | `names_for_ids` round-trips for every ad in the pool before top-N is kept | 🟡 Batched to ~2 lookups/ad (was 5); SQL pre-filter bounds the pool | Score on ids only; resolve names once for the retained top-N matches (display layer) |
 
 ## Tier 3 — would fail in scale-up (100+ concurrent users)
 
@@ -51,6 +52,8 @@ needs ground-truth data.
 | 17 | Skepticism was prompt-only with positive examples only | Yes — free quality win | ✅ Added 6 reject-examples to `translate_capabilities.md` covering title inflation, multi-domain hallucination, personality-as-capability, hobby promotion, peak metric without scope, brigada misalignment |
 | 18 | Confidence band calibration | No — needs eval set with ground truth | Deferred |
 | 19 | Bridge-months guesstimates | No — 8 hand-curated domains are defensible | Deferred until ESCO load |
+| 20 | Two skill namespaces (hand-seed vs ESCO) | Yes — broke target-role enrichment | ✅ `resolve_skill_esco` (taxonomy/repo) resolves candidate skills into the ESCO namespace; translate emits an English `esco_term` per capability → stored ESCO `skill_id`. Enrichment now intersects the occupation's essential∪optional set. must/nice/bridge stay seed-space (works); full namespace unification (move job_ad_skills + level_checklists onto ESCO ids) deferred — needs a loader rewrite + seed rebuild |
+| 21 | Skill resolution drop (~half of free-text phrases) | Partial | 🟡 Layer-1 = diacritics-strip + ESCO aliases + rapidfuzz (token_sort ≥92); LLM `esco_term` handles cross-lingual/paraphrase (`datové modelování`→`data modelling`). Residual misses: vendor tools absent from ESCO (`Power BI`, `Tableau`), and phrases neither lexically nor LLM-mapped. Next: Czech lemmatisation (`simplemma`), embedding retrieval in the seed (Phase C), full NSP pull for Czech aliases (Phase D) |
 
 ## Recommended interview-answer order
 

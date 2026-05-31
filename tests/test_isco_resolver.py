@@ -89,6 +89,16 @@ def test_unresolved_when_no_occupations():
     assert (code, label, method) == (None, None, "unresolved")
 
 
+def test_short_title_does_not_reverse_match_multiword_occupation(monkeypatch):
+    # A one-word title "Data" must NOT trust-match "data analyst" via the
+    # reverse (haystack-in-label) direction → falls through to LLM (mocked None).
+    _seed_occupations([{"uri": "uri:da", "isco": "2511", "label": "data analyst", "lang": "en"}])
+    monkeypatch.setattr(isco_resolver.llm, "call_json", lambda *a, **k: {"isco_code": None})
+    code, _, method = isco_resolver.resolve_isco_for_ad("Data", domain="data")
+    assert code is None
+    assert method != "lexical"
+
+
 def test_short_label_does_not_spuriously_substring_match(monkeypatch):
     # A 3-char label must not match via substring; only exact equality counts.
     _seed_occupations([{"uri": "uri:x", "isco": "1111", "label": "dat", "lang": "en"}])

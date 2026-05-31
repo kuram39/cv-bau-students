@@ -14,8 +14,21 @@ from cv_bau_students.db import _engine, _session_factory, init_db, reset_engine_
 
 @pytest.fixture(autouse=True)
 def _isolated_sqlite():
+    _clear_taxonomy_caches()  # don't inherit a prior test's in-memory index
     reset_engine_for_tests("sqlite:///:memory:")
     init_db()
     yield
     _engine.cache_clear()
     _session_factory.cache_clear()
+    _clear_taxonomy_caches()
+
+
+def _clear_taxonomy_caches() -> None:
+    """The ESCO index + translate call are lru_cached on DB state; each test
+    gets a fresh in-memory DB, so the caches must be dropped between tests."""
+    from cv_bau_students.taxonomy.repo import _esco_index, canonical_for_alias
+    from cv_bau_students.translator.translate import _translate_raw
+
+    _esco_index.cache_clear()
+    canonical_for_alias.cache_clear()
+    _translate_raw.cache_clear()

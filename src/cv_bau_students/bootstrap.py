@@ -33,7 +33,7 @@ from sqlalchemy import select
 
 from cv_bau_students.config import LEVEL_CHECKLISTS_CSV, SCRAPED_ADS_DIR, TAXONOMY_SEED_CSV
 from cv_bau_students.db import _engine, get_session, init_db
-from cv_bau_students.db_models import JobAdRow, Skill
+from cv_bau_students.db_models import JobAdRow, Occupation, Skill
 
 log = logging.getLogger(__name__)
 
@@ -89,6 +89,53 @@ def _restore_from_seed_snapshot() -> bool:
     return True
 
 
+def _backfill_occupations() -> None:
+    """Copy ESCO occupation labels from the bundled seed into an already-
+    seeded DB that predates the `occupations` table.
+
+    Without this, an in-place upgraded DB (skills + ads present, so
+    `is_seeded()` is True and no snapshot restore happens) keeps an empty
+    `occupations` table and `resolve_isco_for_ad` returns unresolved for
+    every ad. No-op when the table is already populated, the snapshot is
+    missing, or the DB is in-memory.
+    """
+    if not SEED_SQLITE_GZ.exists():
+        return
+    try:
+        with get_session() as session:
+            if session.execute(select(Occupation).limit(1)).first() is not None:
+                return  # already populated
+        engine = _engine()
+        if engine.url.database in (None, ":memory:"):
+            return
+
+        import tempfile
+
+        from sqlalchemy import text
+
+        tmp = Path(tempfile.mktemp(suffix=".sqlite"))
+        with gzip.open(SEED_SQLITE_GZ, "rb") as fin, tmp.open("wb") as fout:
+            shutil.copyfileobj(fin, fout)
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("ATTACH DATABASE :p AS seed"), {"p": str(tmp)})
+                has_table = conn.execute(
+                    text(
+                        "SELECT name FROM seed.sqlite_master "
+                        "WHERE type='table' AND name='occupations'"
+                    )
+                ).first()
+                if has_table:
+                    conn.execute(text("INSERT INTO occupations SELECT * FROM seed.occupations"))
+                conn.execute(text("DETACH DATABASE seed"))
+            if has_table:
+                log.info("Backfilled occupation labels from seed snapshot.")
+        finally:
+            tmp.unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001
+        log.exception("Bootstrap: occupation backfill failed.")
+
+
 def ensure_seeded() -> None:
     """Restore from seed snapshot if available, then overlay hand-edited bits.
 
@@ -105,6 +152,10 @@ def ensure_seeded() -> None:
         log.exception("Bootstrap: seed snapshot restore failed.")
 
     init_db()
+    # Occupation labels post-date the original seed; an in-place upgraded DB
+    # has the (empty) table but no rows, leaving the ISCO resolver blind.
+    # Self-guards: no-op when already populated or no snapshot present.
+    _backfill_occupations()
     if seed_restored:
         # Snapshot already includes manual seed + ESCO + hierarchy +
         # industry map + NSP + checklists. We deliberately do NOT

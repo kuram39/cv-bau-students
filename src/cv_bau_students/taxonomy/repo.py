@@ -5,13 +5,35 @@ plus per-row ids so the matcher can join on `job_ad_skills` /
 `level_checklists` rows without re-resolving strings.
 """
 
+import unicodedata
 from collections.abc import Iterable
 from functools import lru_cache
 
+from rapidfuzz import fuzz, process
 from sqlalchemy import select
 
 from cv_bau_students.db import get_session
 from cv_bau_students.db_models import Skill, SkillAlias, SkillHierarchy, SkillIndustryMap
+
+# Fuzzy-match acceptance floor for ESCO resolution (token_sort_ratio, 0-100).
+# 92 is strict enough to avoid false links while catching morphology / minor
+# wording drift ("data modelling" ~ "data modeling"). Tune with real CVs.
+_FUZZY_THRESHOLD = 92
+
+
+def normalize(text: str | None) -> str:
+    """Lowercase, strip diacritics, drop punctuation, collapse whitespace.
+
+    Single source of truth for skill/occupation string normalisation —
+    `roles/isco_resolver` imports this. Diacritics-insensitive so Czech
+    CV phrasing matches the taxonomy regardless of háčky/čárky.
+    """
+    if not text:
+        return ""
+    decomposed = unicodedata.normalize("NFKD", text)
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    cleaned = "".join(c if c.isalnum() else " " for c in stripped.lower())
+    return " ".join(cleaned.split())
 
 
 def resolve_skill(name: str) -> tuple[int, str] | None:
@@ -52,6 +74,75 @@ def resolve_skill(name: str) -> tuple[int, str] | None:
             return None
         _, skill = alias_row
         return skill.id, skill.canonical_name
+
+
+@lru_cache(maxsize=1)
+def _esco_index() -> tuple[dict[str, int], list[str]]:
+    """Build once: normalized ESCO label/alias → skill_id, + a key list.
+
+    Covers only ESCO rows (`esco_uri IS NOT NULL`) so resolution lands in
+    the same namespace as the occupation→skill map. Both `canonical_name`
+    (cs) and `canonical_name_en` are indexed, plus ESCO-sourced aliases.
+    First writer wins per normalized key (canonicals inserted before
+    aliases, so a canonical never loses to an alias collision).
+    """
+    index: dict[str, int] = {}
+    with get_session() as session:
+        rows = session.execute(
+            select(Skill.id, Skill.canonical_name, Skill.canonical_name_en).where(
+                Skill.esco_uri.is_not(None)
+            )
+        ).all()
+        for sid, cs, en in rows:
+            for label in (cs, en):
+                key = normalize(label)
+                if key:
+                    index.setdefault(key, sid)
+        alias_rows = session.execute(
+            select(SkillAlias.alias, SkillAlias.canonical_id)
+            .join(Skill, Skill.id == SkillAlias.canonical_id)
+            .where(Skill.esco_uri.is_not(None))
+        ).all()
+        for alias, cid in alias_rows:
+            key = normalize(alias)
+            if key:
+                index.setdefault(key, cid)
+    return index, list(index.keys())
+
+
+def resolve_skill_esco(name: str) -> tuple[int, str] | None:
+    """Resolve a free-text skill into the ESCO namespace (id, canonical_name).
+
+    Exact normalized match → fuzzy fallback (rapidfuzz token_sort_ratio over
+    the ESCO label index, accepted at `_FUZZY_THRESHOLD`). ESCO-only, so the
+    id is comparable with `expected_skills_for_isco`. Returns None when no
+    confident match — the caller then skips that skill rather than guessing.
+    """
+    if not name:
+        return None
+    index, keys = _esco_index()
+    key = normalize(name)
+    if not key:
+        return None
+    sid = index.get(key)
+    if sid is None:
+        match = process.extractOne(key, keys, scorer=fuzz.token_sort_ratio)
+        if match is None or match[1] < _FUZZY_THRESHOLD:
+            return None
+        sid = index[match[0]]
+    with get_session() as session:
+        skill = session.get(Skill, sid)
+        return (skill.id, skill.canonical_name) if skill else None
+
+
+def resolve_many_esco(names: Iterable[str]) -> set[int]:
+    """Batch `resolve_skill_esco` → set of ESCO skill_ids (drops misses)."""
+    out: set[int] = set()
+    for n in names:
+        match = resolve_skill_esco(n)
+        if match:
+            out.add(match[0])
+    return out
 
 
 def names_for_ids(skill_ids: Iterable[int]) -> dict[int, str]:
