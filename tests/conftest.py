@@ -26,9 +26,14 @@ def _isolated_sqlite():
 def _clear_taxonomy_caches() -> None:
     """The ESCO index + translate call are lru_cached on DB state; each test
     gets a fresh in-memory DB, so the caches must be dropped between tests."""
-    from cv_bau_students.taxonomy.repo import _esco_index, canonical_for_alias
+    from cv_bau_students.taxonomy.repo import (
+        _esco_index,
+        _seed_skill_index,
+        canonical_for_alias,
+    )
     from cv_bau_students.translator.translate import _translate_raw
 
     _esco_index.cache_clear()
+    _seed_skill_index.cache_clear()
     canonical_for_alias.cache_clear()
     _translate_raw.cache_clear()

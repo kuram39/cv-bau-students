@@ -9,7 +9,7 @@ from cv_bau_students.jobads.repo import store_ad
 from cv_bau_students.levels.repo import bridge_plan
 from cv_bau_students.matcher.hard_filter import passes_hard_filter
 from cv_bau_students.matcher.rank import rank_candidate
-from cv_bau_students.matcher.score import score_match
+from cv_bau_students.matcher.score import _personal_fit, score_match
 from cv_bau_students.models import (
     CandidateProfile,
     JobAd,
@@ -17,6 +17,41 @@ from cv_bau_students.models import (
     TranslatedCapability,
 )
 from cv_bau_students.taxonomy.repo import resolve_skill
+
+
+def _bare_ad(raw_text: str) -> JobAd:
+    return JobAd(
+        id=1,
+        title="X",
+        location="Praha",
+        remote_mode="hybrid",
+        level="junior",
+        domain="data-analyst",
+        raw_text=raw_text,
+        source="synthetic",
+    )
+
+
+def test_personal_fit_token_overlap_not_substring():
+    # Diacritics-insensitive token match: "datová" overlaps "data".
+    prof = CandidateProfile(
+        candidate_type="student",
+        language="cs",
+        summary="Mám zkušenosti s datovou analýzou a reportingem.",
+        target_domains=["data-analyst"],
+    )
+    hit = _personal_fit(prof, _bare_ad("Hledáme analytika pro data a reporting v týmu."))
+    assert hit > 40.0  # shared content tokens (data, reporting, analy…) lift it
+
+    # No spurious substring hit: "SQL" must NOT match inside "NoSQL".
+    prof2 = CandidateProfile(
+        candidate_type="student", language="en", summary="SQL", target_domains=[]
+    )
+    assert _personal_fit(prof2, _bare_ad("We are a NoSQL shop.")) == 40.0
+
+    # Nothing to say → neutral baseline.
+    prof3 = CandidateProfile(candidate_type="student", language="en")
+    assert _personal_fit(prof3, _bare_ad("anything")) == 40.0
 
 
 @pytest.fixture(autouse=True)
