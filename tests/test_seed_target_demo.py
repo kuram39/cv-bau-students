@@ -71,7 +71,7 @@ _PREFILL = {
 }
 
 
-def _dispatch(prompt: str) -> dict:
+def _dispatch(prompt: str, **_kwargs) -> dict:
     if "Role-specific question generator" in prompt:
         return _ROLE_QUESTIONS
     if "Pre-fill role-specific answers" in prompt:

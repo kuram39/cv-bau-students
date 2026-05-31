@@ -144,7 +144,7 @@ def test_reason_includes_capabilities_in_prompt():
 
     captured: dict[str, str] = {}
 
-    def _capture(prompt: str) -> dict:
+    def _capture(prompt: str, **_kwargs) -> dict:
         captured["prompt"] = prompt
         return _FAKE_PAYLOAD
 

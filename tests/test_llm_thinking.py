@@ -1,0 +1,73 @@
+"""Tests for the selective adaptive-thinking flag on `llm.call_json`.
+
+We mock `llm._client()` so no network is touched and we can assert exactly
+which kwargs reach `messages.create` for `think=False` vs `think=True`.
+"""
+
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+from cv_bau_students import llm
+from cv_bau_students.config import LLM_MAX_TOKENS, LLM_THINK_MAX_TOKENS
+
+
+def _fake_message(*, text: str, with_thinking: bool = False):
+    """Build a response object shaped like the SDK's Message."""
+    blocks = []
+    if with_thinking:
+        # A thinking block must be ignored by the text-only concatenation.
+        blocks.append(SimpleNamespace(type="thinking", thinking="...reasoning..."))
+    blocks.append(SimpleNamespace(type="text", text=text))
+    return SimpleNamespace(content=blocks)
+
+
+def _patched_client(message):
+    client = MagicMock()
+    client.messages.create.return_value = message
+    return client
+
+
+def test_default_call_has_no_thinking_kwarg():
+    msg = _fake_message(text='{"ok": true}')
+    client = _patched_client(msg)
+    with patch.object(llm, "_client", return_value=client):
+        out = llm.call_json("prompt")
+    assert out == {"ok": True}
+    _, kwargs = client.messages.create.call_args
+    assert "thinking" not in kwargs
+    assert kwargs["max_tokens"] == LLM_MAX_TOKENS
+
+
+def test_think_true_enables_adaptive_and_bumps_budget():
+    msg = _fake_message(text='{"ok": true}', with_thinking=True)
+    client = _patched_client(msg)
+    with patch.object(llm, "_client", return_value=client):
+        out = llm.call_json("prompt", think=True)
+    # Thinking block ignored; JSON parsed from the text block.
+    assert out == {"ok": True}
+    _, kwargs = client.messages.create.call_args
+    assert kwargs["thinking"] == {"type": "adaptive"}
+    assert kwargs["max_tokens"] == LLM_THINK_MAX_TOKENS
+
+
+def test_explicit_large_max_tokens_not_shrunk_by_think():
+    msg = _fake_message(text="{}")
+    client = _patched_client(msg)
+    big = LLM_THINK_MAX_TOKENS + 5000
+    with patch.object(llm, "_client", return_value=client):
+        llm.call_json("prompt", max_tokens=big, think=True)
+    _, kwargs = client.messages.create.call_args
+    # think bumps only when the caller's budget is smaller than the floor.
+    assert kwargs["max_tokens"] == big
+
+
+def test_thinking_block_does_not_corrupt_json_parse():
+    msg = _fake_message(text='{"a": 1, "b": 2}', with_thinking=True)
+    client = _patched_client(msg)
+    with patch.object(llm, "_client", return_value=client):
+        out = llm.call_json("prompt", think=True)
+    assert out == {"a": 1, "b": 2}
+    assert json.dumps(out)  # round-trips

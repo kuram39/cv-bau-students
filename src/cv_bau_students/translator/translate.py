@@ -42,7 +42,9 @@ def _translate_raw(
         target_domains=json.dumps(list(target_domains), ensure_ascii=False),
         profile_json=profile_json,
     )
-    payload = llm.call_json(prompt)
+    # Interpretive call — adaptive thinking sharpens the skepticism rules
+    # (confidence calibration, person ≠ role, sequential ≠ synthesis).
+    payload = llm.call_json(prompt, think=True)
     items = payload.get("translated_capabilities", [])
     return tuple(TranslatedCapability.model_validate(item) for item in items)
 

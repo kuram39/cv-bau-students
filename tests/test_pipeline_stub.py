@@ -21,7 +21,7 @@ def _make_dispatcher(profile_payload: dict, translate_payload: dict | None = Non
     """
     translate_payload = translate_payload or {"translated_capabilities": []}
 
-    def _dispatch(prompt: str) -> dict:
+    def _dispatch(prompt: str, **_kwargs) -> dict:
         if "Translate student / career-changer artefacts" in prompt:
             return translate_payload
         # Default: profile extraction prompt.

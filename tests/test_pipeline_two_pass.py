@@ -119,7 +119,7 @@ _PREFILL_PAYLOAD = {
 
 
 def _dispatcher(profile_payload: dict):
-    def _dispatch(prompt: str) -> dict:
+    def _dispatch(prompt: str, **_kwargs) -> dict:
         if "Role-specific question generator" in prompt:
             return _ROLE_QUESTIONS_PAYLOAD
         if "Pre-fill role-specific answers" in prompt:
