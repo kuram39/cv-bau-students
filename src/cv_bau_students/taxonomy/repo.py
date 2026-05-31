@@ -5,6 +5,7 @@ plus per-row ids so the matcher can join on `job_ad_skills` /
 `level_checklists` rows without re-resolving strings.
 """
 
+from collections.abc import Iterable
 from functools import lru_cache
 
 from sqlalchemy import select
@@ -51,6 +52,22 @@ def resolve_skill(name: str) -> tuple[int, str] | None:
             return None
         _, skill = alias_row
         return skill.id, skill.canonical_name
+
+
+def names_for_ids(skill_ids: Iterable[int]) -> dict[int, str]:
+    """Batch-map skill_ids → canonical names (single query).
+
+    Used by the matcher to turn matched/missing skill-id sets into the
+    human-readable names the recruiter audit panel shows.
+    """
+    ids = [i for i in dict.fromkeys(skill_ids)]  # dedupe, preserve order
+    if not ids:
+        return {}
+    with get_session() as session:
+        rows = session.execute(
+            select(Skill.id, Skill.canonical_name).where(Skill.id.in_(ids))
+        ).all()
+    return {row.id: row.canonical_name for row in rows}
 
 
 def descendants_of(parent_id: int) -> list[int]:

@@ -36,7 +36,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from cv_bau_students import llm
-from cv_bau_students.jobads.repo import find_ad_by_title_substring, set_ad_fields_and_skills
+from cv_bau_students.jobads.repo import (
+    find_ad_by_title_substring,
+    resolve_ad_isco,
+    set_ad_fields_and_skills,
+)
 from cv_bau_students.models import LanguageRequirement
 from cv_bau_students.pipeline import (
     express_interest,
@@ -165,7 +169,13 @@ def run_seed(target_title: str = "Datový analytik") -> int:
     print(f"Target ad: id={ad.id} title={ad.title!r}")
     _modify_target_ad(ad)
 
-    # Refresh the ad (employer/skills changed) for the Q generator.
+    # Resolve the ad to an ISCO occupation for target-role-first scoring.
+    # Lexical hit ("Datový analytik" → "analytik dat" → 2511) is free; an
+    # unrecognised title falls back to one cheap LLM call.
+    isco_code, isco_label, isco_method = resolve_ad_isco(ad.id)
+    print(f"  ISCO: {isco_code} ({isco_label}) via {isco_method}")
+
+    # Refresh the ad (employer/skills/isco changed) for the Q generator.
     ad = find_ad_by_title_substring(target_title)
 
     # Generate the fixed role-specific question template once.

@@ -18,6 +18,9 @@ import statistics
 from collections.abc import Iterable
 
 from cv_bau_students.config import (
+    ROLE_BONUS_CAP,
+    ROLE_BONUS_PER,
+    ROLE_ESSENTIAL_GAP_SAMPLE,
     WEIGHT_BRIDGE_FIT,
     WEIGHT_PERSONAL_FIT,
     WEIGHT_SKILL_FIT,
@@ -28,9 +31,14 @@ from cv_bau_students.models import (
     GapItem,
     JobAd,
     MatchScore,
+    SkillFitDetail,
     TranslatedCapability,
 )
-from cv_bau_students.taxonomy.repo import resolve_skill
+from cv_bau_students.taxonomy.repo import (
+    expected_skills_for_isco,
+    names_for_ids,
+    resolve_skill,
+)
 
 
 def score_match(
@@ -43,7 +51,7 @@ def score_match(
     ad_must_ids = _resolve_iterable(ad.must_have)
     ad_nice_ids = _resolve_iterable(ad.nice_to_have)
 
-    skill_fit = _skill_fit(candidate_skill_ids, ad_must_ids, ad_nice_ids)
+    skill_fit, skill_fit_detail = _skill_fit(candidate_skill_ids, ad_must_ids, ad_nice_ids, ad)
     gaps = bridge_plan(ad.domain, ad.level, candidate_skill_ids)
     has_rubric = checklist_exists(ad.domain, ad.level)
     bridge_fit = _bridge_fit(gaps, has_rubric=has_rubric)
@@ -74,19 +82,41 @@ def score_match(
         total=round(total, 1),
         confidence_band=round(band, 1),
         bridge_plan=gaps,
+        skill_fit_detail=skill_fit_detail,
     )
 
 
 # --- axes --------------------------------------------------------------------
 
 
-def _skill_fit(candidate: set[int], must: set[int], nice: set[int]) -> float:
-    """Must-have hits weighted 2× nice-to-have.
+def _skill_fit(
+    candidate: set[int], must: set[int], nice: set[int], ad: JobAd
+) -> tuple[float, SkillFitDetail]:
+    """Must-have hits weighted 2× nice-to-have, plus a capped ESCO bonus.
 
-    A candidate covering all musts + half of nices scores ~75 — leaves
-    room for a perfect cover at 100. Pure must coverage (no nice
+    Base: a candidate covering all musts + half of nices scores ~75 —
+    leaves room for a perfect cover at 100. Pure must coverage (no nice
     overlap) caps at ~67.
+
+    Enrichment: when the ad resolved to an ISCO occupation, demonstrating
+    occupation-essential ESCO skills *beyond* the recruiter's must-haves
+    adds a capped bonus (config `ROLE_BONUS_*`). The base is authoritative;
+    the bonus can only lift, never deflate — so scores stay interpretable
+    and the ~300-skill ESCO set is never a denominator. Returns the score
+    plus a `SkillFitDetail` audit trail for the recruiter panel.
     """
+    base = _base_skill_fit(candidate, must, nice)
+    detail = SkillFitDetail(
+        matched_must=_names(candidate & must),
+        missing_must=_names(must - candidate),
+        matched_nice=_names(candidate & nice),
+    )
+
+    base, detail = _apply_role_enrichment(base, detail, candidate, must, ad)
+    return min(100.0, base), detail
+
+
+def _base_skill_fit(candidate: set[int], must: set[int], nice: set[int]) -> float:
     must_score = (len(candidate & must) / max(1, len(must))) * 100 if must else 0.0
     nice_score = (len(candidate & nice) / max(1, len(nice))) * 100 if nice else 0.0
     if not must and not nice:
@@ -94,6 +124,40 @@ def _skill_fit(candidate: set[int], must: set[int], nice: set[int]) -> float:
     must_weight = 2.0 if must else 0.0
     nice_weight = 1.0 if nice else 0.0
     return (must_score * must_weight + nice_score * nice_weight) / (must_weight + nice_weight)
+
+
+def _apply_role_enrichment(
+    base: float,
+    detail: SkillFitDetail,
+    candidate: set[int],
+    must: set[int],
+    ad: JobAd,
+) -> tuple[float, SkillFitDetail]:
+    """Fold ESCO occupation-essential coverage into skill_fit + the audit."""
+    if not ad.isco_code:
+        return base, detail
+    essential = set(expected_skills_for_isco(ad.isco_code, "essential"))
+    if not essential:
+        return base, detail
+
+    extra = (candidate & essential) - must  # role-essential beyond the must-haves
+    bonus = min(ROLE_BONUS_CAP, len(extra) * ROLE_BONUS_PER)
+
+    missing_sample = sorted(essential - candidate)[:ROLE_ESSENTIAL_GAP_SAMPLE]
+    detail.isco_code = ad.isco_code
+    detail.occupation_label = ad.isco_occupation_label
+    detail.role_essential_total = len(essential)
+    detail.role_essential_evidenced = len(candidate & essential)
+    detail.role_essential_matched = _names(candidate & essential)
+    detail.role_essential_missing = _names(missing_sample)
+    detail.bonus_applied = round(bonus, 1)
+    return base + bonus, detail
+
+
+def _names(skill_ids: Iterable[int]) -> list[str]:
+    """Resolve a set/list of skill_ids to sorted canonical names."""
+    mapping = names_for_ids(skill_ids)
+    return sorted(mapping.values())
 
 
 def _bridge_fit(gaps: list[GapItem], *, has_rubric: bool) -> float | None:

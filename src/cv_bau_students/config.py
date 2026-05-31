@@ -41,6 +41,17 @@ WEIGHT_SKILL_FIT = 0.45
 WEIGHT_BRIDGE_FIT = 0.35
 WEIGHT_PERSONAL_FIT = 0.20
 
+# --- ESCO target-role enrichment (skill_fit) ---
+# When an ad resolves to an ISCO occupation, skill_fit gets a capped bonus
+# for demonstrating occupation-essential ESCO skills *beyond* the recruiter's
+# hand-typed must-haves. Enrichment can only lift the base (recruiter must/nice
+# coverage stays the authoritative, interpretable signal) — never deflate it.
+# The ~300-skill ESCO essential set is deliberately NOT used as a denominator
+# (that would crush every score to single digits); breadth is rewarded, capped.
+ROLE_BONUS_CAP = 12.0  # max points the enrichment can add
+ROLE_BONUS_PER = 3.0  # points per evidenced role-essential skill beyond must
+ROLE_ESSENTIAL_GAP_SAMPLE = 8  # how many missing role-essential skills to surface
+
 # --- Database ---
 # Default SQLite file is at `./data/cv_bau_students.sqlite` relative to
 # the working directory — assumes scripts are run from the repo root.

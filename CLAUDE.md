@@ -65,9 +65,11 @@ GitHub: `buhlez31/cv-bau-students` (private, standalone — NOT a GitHub fork).
 ## Taxonomy / data
 
 - **ESCO v1.2.x** (CC BY 4.0) is the primary skill taxonomy — full set lives in
-  `src/cv_bau_students/data/seed.sqlite.gz` (~8.3 MB, committed). ~14k skills +
-  19k hierarchy edges + 70k occupation→skill rows. Universal coverage (every
-  field, not just IT).
+  `src/cv_bau_students/data/seed.sqlite.gz` (~9.2 MB, committed). ~14k skills +
+  19k hierarchy edges + 70k occupation→skill rows + ~6k occupation labels
+  (en+cs, `occupations` table, drives the role→ISCO resolver). Universal
+  coverage (every field, not just IT). Rebuild loaders incl.
+  `scripts/load_esco_occupation_labels.py`, then `scripts/build_cloud_seed.py`.
 - **Czech NSP/CDK** (CC0) layered on top.
 - Attribution required: see `NOTICES.md`; UI footer + README "Data Sources".
 
@@ -87,11 +89,16 @@ with an empty `email` skips it.
 ## Current state / open items
 
 - Phases 1–12 shipped. Model on Sonnet 4.6 + selective thinking (PRs #1–#3 merged).
+- Target-role-first scoring + recruiter audit shipped (`feat/target-role-scoring`):
+  ads resolve to an ISCO occupation (`roles/isco_resolver.py`, lexical→LLM);
+  `expected_skills_for_isco()` now feeds skill_fit as a capped enrichment bonus +
+  gap surface (`matcher/score.py`, `SkillFitDetail`); recruiter drill-in shows the
+  breakdown + original CV text (`Candidate.raw_cv_text`).
 - Deferred (candidates, not started):
   - LLM-cost optimisation (8→4 calls per applicant) — documented in `docs/RISKS.md`,
     planned for a `perf/llm-cost` branch.
   - Diacritics-strip in `resolve_skill` (CV "dulni nakladac" w/o háčky → None).
-  - Wire `expected_skills_for_isco()` into the matcher (target-role-first scoring).
+    (The resolver already strips diacritics; `resolve_skill` still doesn't.)
   - README/Mermaid refresh for the dual-panel flow; slide deck.
 - `docs/RISKS.md` is the interview answer-key (failure tiers, cost trade-off, scale).
 
