@@ -18,6 +18,7 @@ from typing import Any
 from cv_bau_students.config import (
     LLM_MAX_TOKENS,
     LLM_MODEL,
+    LLM_THINK_BUDGET,
     LLM_THINK_MAX_TOKENS,
     PROMPTS_DIR,
 )
@@ -68,12 +69,14 @@ def _strip_fences(text: str) -> str:
 def call_json(prompt: str, *, max_tokens: int = LLM_MAX_TOKENS, think: bool = False) -> dict:
     """Send a single-turn prompt expecting strict JSON output. Returns parsed dict.
 
-    `think=True` enables adaptive thinking — reserved for the interpretive
-    calls (capability translation, recruiter reasoning) where extra reasoning
-    measurably improves the judgement. The cheap extraction / classification
-    calls leave it off (the default) to keep per-call cost down. Thinking
-    blocks are billed as output, so thinking calls get a larger token budget
-    (`LLM_THINK_MAX_TOKENS`) split between the reasoning and the JSON answer.
+    `think=True` enables extended thinking with an explicit `budget_tokens`
+    cap — reserved for the interpretive calls (capability translation,
+    recruiter reasoning) where extra reasoning measurably improves the
+    judgement. The cheap extraction / classification calls leave it off (the
+    default) to keep per-call cost down. Thinking blocks are billed as output,
+    so thinking calls get a larger `max_tokens` (`LLM_THINK_MAX_TOKENS`); the
+    `budget_tokens` cap reserves the remainder for the JSON answer so a
+    long chain-of-thought can't starve the response.
 
     Only `text` blocks are concatenated below, so any thinking blocks in the
     response are ignored for parsing regardless of this flag.
@@ -84,8 +87,13 @@ def call_json(prompt: str, *, max_tokens: int = LLM_MAX_TOKENS, think: bool = Fa
         "messages": [{"role": "user", "content": prompt}],
     }
     if think:
-        kwargs["thinking"] = {"type": "adaptive"}
-        kwargs["max_tokens"] = max(max_tokens, LLM_THINK_MAX_TOKENS)
+        # Explicit thinking budget (not adaptive): caps reasoning at
+        # LLM_THINK_BUDGET so the remaining max_tokens is reserved for the JSON
+        # answer. Adaptive thinking could consume the whole budget and leave no
+        # answer (stop_reason=max_tokens, blocks=['thinking']).
+        budget = max_tokens if max_tokens > LLM_THINK_MAX_TOKENS else LLM_THINK_MAX_TOKENS
+        kwargs["max_tokens"] = budget
+        kwargs["thinking"] = {"type": "enabled", "budget_tokens": LLM_THINK_BUDGET}
     msg = _client().messages.create(**kwargs)
     raw = "".join(block.text for block in msg.content if getattr(block, "type", None) == "text")
     payload = _strip_fences(raw)

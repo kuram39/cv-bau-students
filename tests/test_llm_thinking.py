@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from cv_bau_students import llm
-from cv_bau_students.config import LLM_MAX_TOKENS, LLM_THINK_MAX_TOKENS
+from cv_bau_students.config import LLM_MAX_TOKENS, LLM_THINK_BUDGET, LLM_THINK_MAX_TOKENS
 
 
 def _fake_message(*, text: str, with_thinking: bool = False):
@@ -41,7 +41,7 @@ def test_default_call_has_no_thinking_kwarg():
     assert kwargs["max_tokens"] == LLM_MAX_TOKENS
 
 
-def test_think_true_enables_adaptive_and_bumps_budget():
+def test_think_true_enables_budgeted_thinking():
     msg = _fake_message(text='{"ok": true}', with_thinking=True)
     client = _patched_client(msg)
     with patch.object(llm, "_client", return_value=client):
@@ -49,8 +49,10 @@ def test_think_true_enables_adaptive_and_bumps_budget():
     # Thinking block ignored; JSON parsed from the text block.
     assert out == {"ok": True}
     _, kwargs = client.messages.create.call_args
-    assert kwargs["thinking"] == {"type": "adaptive"}
+    assert kwargs["thinking"] == {"type": "enabled", "budget_tokens": LLM_THINK_BUDGET}
     assert kwargs["max_tokens"] == LLM_THINK_MAX_TOKENS
+    # The answer always has reserved room beyond the thinking cap.
+    assert kwargs["max_tokens"] > kwargs["thinking"]["budget_tokens"]
 
 
 def test_explicit_large_max_tokens_not_shrunk_by_think():
