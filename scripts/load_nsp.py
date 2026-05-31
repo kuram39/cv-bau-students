@@ -15,15 +15,19 @@ Run AFTER `scripts/load_esco.py`. Idempotent: re-running upserts.
 
 Usage:
     python scripts/load_nsp.py --source data/raw_nsp/competencies.json
-    python scripts/load_nsp.py --api                       # pull live
+    python scripts/load_nsp.py --api                       # soft-skill + digi
+    python scripts/load_nsp.py --api --include-hard-skills --aliases-only
+        # + the ~10k /cdk/competence hard skills, kept ONLY as Czech aliases
+        # on matching ESCO skills (recommended for max Czech coverage, no bloat)
 
 Live API (CDK — Centrální databáze kompetencí, no auth, public):
     https://nsp.cz/api/v1.2/cdk/soft-skill   # měkké (transversal) kompetence
     https://nsp.cz/api/v1.2/cdk/digi         # digitální kompetence
-Each returns ``{"code":200,"data":[{...}]}``; we fetch the full list in one
-request (these two endpoints are not paginated). The hard-skill catalogue lives
-at ``/api/v1.2/cdk/competence`` but is offset-paginated over ~10k rows with a
-numeric ``type`` taxonomy — left for a follow-up (see ``_fetch_from_api``).
+    https://nsp.cz/api/v1.2/cdk/competence   # odborné dovednosti (~10k, paginated)
+The first two return the full list in one request; ``/competence`` is
+offset-paginated (``limit``/``offset``, ``count`` = total). Its titles are
+concrete skill names, so with ``--aliases-only`` they enrich ESCO skills with
+Czech synonyms; without it they'd add thousands of inert stand-alone rows.
 
 NOTE: the CDK competency lists carry NO CZ-ISCO occupation codes — linking
 competencies to CZ-ISCO via NSP work-units is a separate follow-up; we persist
@@ -90,9 +94,47 @@ def _fetch_list(endpoint: str) -> list[dict]:
     return data
 
 
-def _fetch_from_api() -> list[dict]:
+def _fetch_competence_paginated(page_size: int = 200, max_pages: int = 200) -> list[dict]:
+    """Pull the offset-paginated hard-skill catalogue (``/cdk/competence``,
+    ~10k rows) and normalise to the ``_persist_competency`` dict shape.
+
+    These titles are concrete Czech skill/knowledge names ("2D a 3D grafické
+    počítačové programy"), unlike the per-occupation work-unit phrases — so in
+    ``--aliases-only`` mode they become useful Czech aliases on matching ESCO
+    skills. `max_pages` is a runaway guard."""
+    comps: list[dict] = []
+    offset = 0
+    for _ in range(max_pages):
+        url = f"{_API_BASE}/competence?limit={page_size}&offset={offset}"
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=_API_TIMEOUT) as resp:  # noqa: S310
+            payload = json.loads(resp.read().decode("utf-8"))
+        data = payload.get("data")
+        if not isinstance(data, list):
+            raise ValueError(f"unexpected CDK response shape from {url}: missing 'data' list")
+        for item in data:
+            title = (item.get("title") or "").strip()
+            if not title:
+                continue
+            comps.append(
+                {
+                    "kod": (item.get("fullCode") or item.get("code") or "").strip(),
+                    "nazev": title,
+                    "synonyma": [title],
+                    "typ": "odborná dovednost",
+                    "cz_isco": [],
+                }
+            )
+        offset += len(data)
+        if not data or offset >= int(payload.get("count") or 0):
+            break
+    return comps
+
+
+def _fetch_from_api(*, include_hard: bool = False) -> list[dict]:
     """Pull live CDK soft-skill + digi competencies and normalise to the
-    ``_persist_competency`` dict shape.
+    ``_persist_competency`` dict shape. With ``include_hard`` also pull the
+    paginated ``/cdk/competence`` hard-skill catalogue (~10k rows).
 
     Mapping (CDK item -> competency dict):
       * nazev    = title
@@ -138,11 +180,19 @@ def _fetch_from_api() -> list[dict]:
             }
         )
 
+    if include_hard:
+        comps.extend(_fetch_competence_paginated())
+
     return comps
 
 
-def _persist_competency(comp: dict) -> tuple[int, int]:
-    """Returns (skills_touched, aliases_added)."""
+def _persist_competency(comp: dict, *, aliases_only: bool = False) -> tuple[int, int]:
+    """Returns (skills_touched, aliases_added).
+
+    With ``aliases_only`` the competency is dropped when it has no ESCO match
+    instead of inserting a stand-alone Skill row — keeps NSP purely as Czech
+    *alias* enrichment on the ESCO backbone, avoiding thousands of inert
+    occupation-specific rows (and the fuzzy-match noise they'd add)."""
     code = (comp.get("kod") or "").strip()
     name = (comp.get("nazev") or "").strip()
     if not name:
@@ -152,6 +202,8 @@ def _persist_competency(comp: dict) -> tuple[int, int]:
 
     # 1. Try to attach to existing skill (ESCO match).
     match = resolve_skill(name)
+    if match is None and aliases_only:
+        return 0, 0  # no ESCO anchor → skip (alias-only mode)
     aliases_added = 0
     with get_session() as session:
         if match is not None:
@@ -214,13 +266,20 @@ def _map_type(nsp_type: str) -> str:
     return "skill"
 
 
-def main_args(*, source: Path | None = None, api: bool = False, verbose: bool = True) -> int:
+def main_args(
+    *,
+    source: Path | None = None,
+    api: bool = False,
+    include_hard: bool = False,
+    aliases_only: bool = False,
+    verbose: bool = True,
+) -> int:
     """Programmatic entry point — usable from tests."""
     init_db()
 
     if api:
         try:
-            competencies = _fetch_from_api()
+            competencies = _fetch_from_api(include_hard=include_hard)
         except (urllib.error.URLError, TimeoutError, ValueError, OSError) as exc:
             print(f"NSP CDK live fetch failed: {exc}", file=sys.stderr)
             return 1
@@ -232,13 +291,16 @@ def main_args(*, source: Path | None = None, api: bool = False, verbose: bool = 
 
     touched = 0
     aliases = 0
+    skipped = 0
     for comp in competencies:
-        t, a = _persist_competency(comp)
+        t, a = _persist_competency(comp, aliases_only=aliases_only)
         touched += t
         aliases += a
+        skipped += 1 - t  # t is 0 when an alias-only competency had no ESCO match
 
     if verbose:
-        print(f"Touched {touched} skills, added {aliases} NSP aliases.")
+        tail = f" (skipped {skipped} unmatched)" if aliases_only else ""
+        print(f"Touched {touched} skills, added {aliases} NSP aliases{tail}.")
     return 0
 
 
@@ -253,10 +315,26 @@ def main() -> int:
     parser.add_argument(
         "--api",
         action="store_true",
-        help="Pull live from data.mpsv.cz instead of local file. TODO: wire endpoint.",
+        help="Pull live from the NSP/CDK REST API instead of a local file.",
+    )
+    parser.add_argument(
+        "--include-hard-skills",
+        action="store_true",
+        help="Also pull the paginated /cdk/competence hard-skill catalogue (~10k rows).",
+    )
+    parser.add_argument(
+        "--aliases-only",
+        action="store_true",
+        help="Only attach Czech aliases to matching ESCO skills; skip stand-alone "
+        "inserts (avoids inert occupation-specific rows + fuzzy noise).",
     )
     args = parser.parse_args()
-    return main_args(source=args.source, api=args.api)
+    return main_args(
+        source=args.source,
+        api=args.api,
+        include_hard=args.include_hard_skills,
+        aliases_only=args.aliases_only,
+    )
 
 
 if __name__ == "__main__":

@@ -230,3 +230,68 @@ def test_nsp_api_path_handles_fetch_failure_without_hanging():
     ):
         rc = load_nsp.main_args(api=True)
     assert rc == 1
+
+
+def _seed_one_esco_skill(name: str) -> int:
+    with get_session() as s:
+        row = Skill(canonical_name=name, canonical_name_en=name, esco_uri=f"uri:{name}")
+        s.add(row)
+        s.flush()
+        return row.id
+
+
+def test_aliases_only_skips_unmatched_competencies():
+    """In aliases-only mode, a competency with no ESCO match is dropped — no
+    inert stand-alone Skill row is created."""
+    sid = _seed_one_esco_skill("data analysis")
+    with get_session() as s:
+        before = s.query(Skill).count()
+
+    # Matches an ESCO skill → alias attached.
+    t1, a1 = load_nsp._persist_competency(
+        {"kod": "x1", "nazev": "data analysis", "synonyma": ["data analysis"]},
+        aliases_only=True,
+    )
+    # No ESCO match → skipped entirely.
+    t2, a2 = load_nsp._persist_competency(
+        {"kod": "x2", "nazev": "naprosto specifická česká kompetence bez ESCO"},
+        aliases_only=True,
+    )
+
+    assert (t1, t2) == (1, 0)
+    with get_session() as s:
+        assert s.query(Skill).count() == before  # no standalone row added
+        alias = (
+            s.query(SkillAlias)
+            .filter(SkillAlias.source == "nsp", SkillAlias.canonical_id == sid)
+            .one_or_none()
+        )
+        assert alias is not None
+
+
+def test_include_hard_skills_pulls_paginated_competence():
+    """--include-hard-skills folds /cdk/competence into the api pull."""
+    _seed_one_esco_skill("data mining")
+    fake_hard = [
+        {
+            "kod": "m15._.0058",
+            "nazev": "data mining",
+            "synonyma": ["data mining"],
+            "typ": "odborná dovednost",
+            "cz_isco": [],
+        },
+    ]
+    with (
+        patch.object(load_nsp, "_fetch_list", side_effect=_fake_fetch_list),
+        patch.object(load_nsp, "_fetch_competence_paginated", return_value=fake_hard) as m,
+    ):
+        rc = load_nsp.main_args(api=True, include_hard=True, aliases_only=True)
+    assert rc == 0
+    m.assert_called_once()
+    with get_session() as s:
+        alias = (
+            s.query(SkillAlias)
+            .filter(SkillAlias.alias == "data mining", SkillAlias.source == "nsp")
+            .one_or_none()
+        )
+        assert alias is not None
