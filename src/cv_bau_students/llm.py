@@ -35,7 +35,11 @@ def _client():
         raise RuntimeError("ANTHROPIC_API_KEY not set. Copy .env.example to .env and add your key.")
     from anthropic import Anthropic
 
-    return Anthropic(api_key=key)
+    # Bound a stalled/overloaded request: a single call can't hang the whole
+    # seed for minutes. 300s comfortably exceeds legit generation (≤8K output
+    # tokens ≈ ~2-3 min) but turns an API stall into a fast, visible error
+    # instead of a silent multi-minute freeze. max_retries handles transient 529s.
+    return Anthropic(api_key=key, timeout=300.0, max_retries=2)
 
 
 @lru_cache(maxsize=16)
