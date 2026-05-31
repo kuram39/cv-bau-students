@@ -132,11 +132,19 @@ def _render_target_skill_picker(ad: JobAd) -> None:
         name_to_id = {name: sid for sid, name in (opts["core"] + opts["optional"])}
         core_opts = [name for _, name in opts["core"]]
         opt_opts = [name for _, name in opts["optional"]]
+        core_set, opt_set = set(core_opts), set(opt_opts)
 
         current = jobads_repo.get_target_skills(ad.id) or {"core": set(), "optional": set()}
         id_to_name = {sid: name for name, sid in name_to_id.items()}
-        core_default = [id_to_name[i] for i in current.get("core", set()) if i in id_to_name]
-        opt_default = [id_to_name[i] for i in current.get("optional", set()) if i in id_to_name]
+        # Defaults must be a subset of each multiselect's own options, else
+        # Streamlit raises. target_skill_options keeps curated tiers consistent;
+        # this filter is the belt-and-suspenders guard.
+        core_default = [
+            n for i in current.get("core", set()) if (n := id_to_name.get(i)) in core_set
+        ]
+        opt_default = [
+            n for i in current.get("optional", set()) if (n := id_to_name.get(i)) in opt_set
+        ]
 
         chosen_core = st.multiselect("Core dovednosti", core_opts, default=core_default)
         chosen_opt = st.multiselect("Optional dovednosti", opt_opts, default=opt_default)

@@ -115,6 +115,24 @@ def test_options_pool_includes_ad_requirements_and_preset():
     assert ids["data analysis"] in all_ids
 
 
+def test_options_curated_tier_wins_over_isco_tier():
+    """A skill curated as OPTIONAL must appear in the optional option pool even
+    if ISCO/preset class it essential — else the saved default isn't in that
+    multiselect's options and Streamlit raises (default not in options)."""
+    from cv_bau_students.jobads.repo import set_target_skills
+
+    ids = _seed_esco(["SQL", "Python", "machine learning"])
+    ad_id = _store_ad_with_isco(_ad(), "2511")
+    # Curate ML as optional (the 2511 preset already does; assert tier wins).
+    set_target_skills(ad_id, core=[ids["SQL"], ids["Python"]], optional=[ids["machine learning"]])
+
+    opts = target_skill_options(ad_id)
+    core_pool = {i for i, _ in opts["core"]}
+    opt_pool = {i for i, _ in opts["optional"]}
+    assert ids["machine learning"] in opt_pool
+    assert ids["machine learning"] not in core_pool
+
+
 def test_rescore_ad_recomputes_after_target_change():
     _seed_esco(["SQL", "Python", "data analysis"])
     ad_id = _store_ad_with_isco(_ad(must_have=["SQL"], nice_to_have=[]), "2511")

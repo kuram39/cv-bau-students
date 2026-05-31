@@ -333,8 +333,16 @@ def target_skill_options(ad_id: int) -> dict[str, list[tuple[int, str]]]:
         extra_core |= set(_resolve_terms(list(ad.must_have)))
         extra_opt |= set(_resolve_terms(list(ad.nice_to_have)))
 
-    core_ids = {i for i, _ in sugg["core"]} | extra_core
-    opt_ids = ({i for i, _ in sugg["optional"]} | extra_opt) - core_ids
+    # The recruiter's CURRENT curated tiers win: a skill they put in optional
+    # must stay in the optional pool even if ISCO/preset call it essential
+    # (else the saved default isn't in that multiselect's options → Streamlit
+    # raises, and the curation is silently lost).
+    cur = get_target_skills(ad_id) or {"core": set(), "optional": set()}
+    cur_core = cur.get("core", set())
+    cur_opt = cur.get("optional", set())
+
+    core_ids = ({i for i, _ in sugg["core"]} | extra_core | cur_core) - cur_opt
+    opt_ids = ({i for i, _ in sugg["optional"]} | extra_opt | cur_opt) - core_ids
     namemap = names_for_ids([*core_ids, *opt_ids])
 
     def _pairs(ids: set[int]) -> list[tuple[int, str]]:
