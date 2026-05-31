@@ -11,6 +11,9 @@ plotly>=5.18.0
 pandas>=2.1.0
 python-dotenv>=1.0.0
 rapidfuzz>=3.0.0
+# Postgres driver — only needed when CV_BAU_STUDENTS_DB_URL points at a
+# postgresql:// DSN (persistent deploy). Harmless on the SQLite default.
+psycopg2-binary>=2.9
 # Install the local cv_bau_students package itself. Streamlit Cloud only
 # runs `pip install -r requirements.txt`; without `.` the imports fail
 # at startup. Same lesson as cv-estimator.
