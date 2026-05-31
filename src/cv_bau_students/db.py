@@ -33,6 +33,12 @@ def _engine() -> Engine:
             # persists across the test (otherwise each session would get
             # a fresh, empty DB).
             pool_kwargs["poolclass"] = StaticPool
+    else:
+        # Postgres (persistent deploy): managed free tiers (Neon/Supabase)
+        # drop idle connections, so validate on checkout and recycle before
+        # their idle timeout — otherwise the first query after idle errors.
+        pool_kwargs["pool_pre_ping"] = True
+        pool_kwargs["pool_recycle"] = 300
     engine = create_engine(url, connect_args=connect_args, future=True, **pool_kwargs)
     return engine
 
