@@ -9,11 +9,10 @@ role-specific Q&A the candidate submitted.
 
 from __future__ import annotations
 
-import json
-
 import streamlit as st
 
 from cv_bau_students.candidates import repo as candidates_repo
+from cv_bau_students.explanation.format import parse_reasoning
 from cv_bau_students.jobads import repo as jobads_repo
 from cv_bau_students.models import JobAd
 
@@ -259,22 +258,7 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
             )
 
     if m.reasoning:
-        st.markdown("**Zdůvodnění (AI):**")
-        try:
-            payload = json.loads(m.reasoning)
-            st.write(payload.get("verdict", m.reasoning))
-            for label, key, marker in (
-                ("Silné stránky", "strengths", "+"),
-                ("Mezery", "gaps", "−"),
-                ("Otázky na pohovor", "interview_prompts", "❓"),
-            ):
-                items = payload.get(key, [])
-                if items:
-                    st.markdown(f"**{label}:**")
-                    for item in items:
-                        st.caption(f"{marker} {item}")
-        except (json.JSONDecodeError, TypeError):
-            st.write(m.reasoning)
+        _render_reasoning(m.reasoning)
 
     if detail.raw_cv_text:
         with st.expander("📄 Původní CV (raw text)"):
@@ -282,6 +266,27 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
 
     with st.expander("🔧 Raw profil JSON"):
         st.json(detail.profile.model_dump())
+
+
+def _render_reasoning(raw: str) -> None:
+    """Structured AI verdict: headline verdict + strengths / gaps / interview
+    prompts. Tolerant of truncated/invalid JSON (never dumps raw JSON)."""
+    r = parse_reasoning(raw)
+    st.markdown("**Zdůvodnění (AI):**")
+    if r["verdict"]:
+        st.info(r["verdict"])
+    for label, key, marker in (
+        ("✅ Silné stránky", "strengths", "🟢"),
+        ("⚠️ Mezery", "gaps", "🔴"),
+        ("❓ Otázky na pohovor", "interview_prompts", "❓"),
+    ):
+        items = r.get(key) or []
+        if items:
+            st.markdown(f"**{label}:**")
+            for item in items:
+                st.markdown(f"- {marker} {item}")
+    if r["truncated"]:
+        st.caption("_(zdůvodnění bylo uloženo neúplné — přegeneruj re-runem analýzy)_")
 
 
 def _render_skill_fit_detail(d) -> None:

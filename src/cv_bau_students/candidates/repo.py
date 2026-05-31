@@ -383,8 +383,7 @@ def get_candidates_for_ad(
                     total=m.total,
                     confidence_band=m.confidence_band,
                     top_skills=top_skills,
-                    headline=_first_sentence(_load_match_reasoning(session, cand.id, ad_id))
-                    or "(no reasoning yet)",
+                    headline=_reasoning_headline(_load_match_reasoning(session, cand.id, ad_id)),
                 )
             )
         return results
@@ -534,3 +533,12 @@ def _first_sentence(text: str | None) -> str | None:
         if sep in text:
             return text.split(sep, 1)[0].strip() + sep.strip()
     return text.strip()
+
+
+def _reasoning_headline(raw: str | None) -> str:
+    """One-line recruiter headline = first sentence of the parsed verdict
+    (never the raw JSON string, even when the stored rationale is truncated)."""
+    from cv_bau_students.explanation.format import parse_reasoning
+
+    verdict = parse_reasoning(raw)["verdict"]
+    return _first_sentence(verdict) or "(zatím bez zdůvodnění)"
