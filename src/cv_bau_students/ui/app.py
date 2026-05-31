@@ -1,9 +1,14 @@
-"""Streamlit recruiter view.
+"""Streamlit dual-panel demo — Kandidát + Recruiter in one app.
 
-Two ranked lists side-by-side (per owner spec): students-with-potential
-on the left, mocked experienced candidates on the right. Each entry has
-a candidate-type badge, confidence band, evidence panel, bridge plan,
-and recommended interview prompts.
+Two tabs:
+  - 👤 Kandidát — upload CV, answer minimal BAU questions if needed,
+    see matched roles, express interest, fill role-specific questions.
+  - 🧑‍💼 Recruiter — one target job, two ranked candidate columns
+    (students vs experienced) with drill-in detail.
+
+Single `streamlit run`; the tabs share the same SQLite, so a CV
+uploaded in the Kandidát tab appears in the Recruiter tab after the
+candidate expresses interest.
 
 Run via:
     streamlit run src/cv_bau_students/ui/app.py
@@ -11,17 +16,15 @@ Run via:
 
 from __future__ import annotations
 
-import json
 import os
-from dataclasses import dataclass
 
 import streamlit as st
 from dotenv import load_dotenv
 
 from cv_bau_students.bootstrap import ensure_seeded, prewarm_llm
-from cv_bau_students.jobads.repo import list_ads
-from cv_bau_students.models import CandidateAnalysis, JobAd, MatchScore
-from cv_bau_students.pipeline import analyze_candidate
+from cv_bau_students.jobads.repo import find_ad_by_title_substring
+from cv_bau_students.ui.candidate_panel import render_candidate_panel
+from cv_bau_students.ui.recruiter_panel import render_recruiter_panel
 
 load_dotenv()
 
@@ -33,61 +36,15 @@ if not os.environ.get("ANTHROPIC_API_KEY"):
     except (KeyError, FileNotFoundError):
         pass
 
+# The demo's single target role. The seed script prepares this ad.
+TARGET_TITLE = "Datový analytik"
 
-def _find_ad_by_id(ad_id: int) -> JobAd | None:
-    for ad in list_ads():
-        if ad.id == ad_id:
-            return ad
-    return None
-
-
-def _render_student_match(match: MatchScore) -> None:
-    """Render one student-match card."""
-    ad_meta = _find_ad_by_id(match.ad_id)
-    title = f"#{match.ad_id} — {ad_meta.title if ad_meta else 'Ad'}"
-    with st.container():
-        st.markdown(f"**📚 Student** · {title}")
-        st.progress(min(1.0, match.total / 100))
-        bridge_label = (
-            f"bridge {match.bridge_fit}" if match.bridge_fit >= 0 else "bridge N/A (no rubric)"
-        )
-        st.caption(
-            f"Total {match.total} ± {match.confidence_band} | "
-            f"skill {match.skill_fit} | {bridge_label} | "
-            f"personal {match.personal_fit}"
-        )
-        if match.bridge_plan:
-            st.markdown("**Bridge plan**:")
-            for gap in match.bridge_plan:
-                bridgeable = (
-                    f" — ~{gap.bridgeable_in_months} mo"
-                    if gap.bridgeable_in_months is not None
-                    else " — experience-only, no shortcut"
-                )
-                st.caption(f"• {gap.skill}{bridgeable}")
-        if match.reasoning:
-            try:
-                payload = json.loads(match.reasoning)
-            except json.JSONDecodeError:
-                payload = {"verdict": match.reasoning}
-            st.markdown(f"_Verdict:_ {payload.get('verdict', '')}")
-            for label, key, marker in (
-                ("Strengths", "strengths", "+"),
-                ("Gaps", "gaps", "−"),
-                ("Interview prompts", "interview_prompts", "❓"),
-            ):
-                items = payload.get(key, [])
-                if not items:
-                    continue
-                st.markdown(f"**{label}**")
-                for item in items:
-                    st.caption(f"{marker} {item}")
-        st.markdown("---")
-
-
-st.set_page_config(page_title="cv-bau-students recruiter view", page_icon="📚", layout="wide")
-st.title("📚 cv-bau-students — recruiter view")
-st.caption("Studentský / changer pipeline — odděleně ranked vůči BAU experienced output.")
+st.set_page_config(page_title="cv-bau-students", page_icon="🧑‍💼", layout="wide")
+st.title("cv-bau-students — matching studentů a absolventů")
+st.caption(
+    "Demo: jedna cílová pozice, kandidáti nahrávají CV (záložka Kandidát), "
+    "recruiter vidí obodované zájemce (záložka Recruiter)."
+)
 
 if not os.environ.get("ANTHROPIC_API_KEY"):
     st.error("Chybí `ANTHROPIC_API_KEY`. Lokálně: `.env`. Cloud: Streamlit Secrets.")
@@ -96,114 +53,17 @@ if not os.environ.get("ANTHROPIC_API_KEY"):
 ensure_seeded()
 prewarm_llm()
 
-TYPE_BADGE = {
-    "student": "📚 Student",
-    "career_changer": "🔄 Career-changer",
-    "experienced": "💼 Experienced",
-}
+target_ad = find_ad_by_title_substring(TARGET_TITLE)
 
-
-@dataclass
-class MockExperiencedCandidate:
-    name: str
-    role: str
-    score: int
-    summary: str
-
-
-_MOCK_EXPERIENCED = [
-    MockExperiencedCandidate(
-        name="Lucie K.",
-        role="Senior Data Analyst",
-        score=82,
-        summary="7 yrs analytics at Avast + Seznam. Owns full pipeline + stakeholder mgmt.",
-    ),
-    MockExperiencedCandidate(
-        name="Marek P.",
-        role="Backend Engineer",
-        score=78,
-        summary="5 yrs Python + Postgres in fintech. Looking for product-shaped backend role.",
-    ),
-    MockExperiencedCandidate(
-        name="Eva D.",
-        role="UX Designer",
-        score=74,
-        summary="6 yrs product design in SaaS. Strong portfolio in B2B onboarding flows.",
-    ),
-]
-
-
-uploaded = st.file_uploader("Nahraj CV studenta (PDF / DOCX)", type=["pdf", "docx"])
-if not uploaded:
-    st.info("👆 Vyber CV pro analýzu.")
-    st.stop()
-
-if st.button("🚀 Spustit matching", type="primary"):
-    with st.spinner("Analyzuji CV (5-6 LLM volání)…"):
-        try:
-            result = analyze_candidate(uploaded.getvalue(), uploaded.name)
-        except Exception as exc:  # noqa: BLE001 — surface to user
-            st.error(f"Pipeline error: {exc}")
-            st.stop()
-    st.session_state["last_analysis"] = result.model_dump()
-
-analysis_dict = st.session_state.get("last_analysis")
-if not analysis_dict:
-    st.info("Klikni na **Spustit matching** pro vyhodnocení nahraného CV.")
-    st.stop()
-
-analysis = CandidateAnalysis.model_validate(analysis_dict)
-
-# --- Top header ------------------------------------------------------------
-
-st.subheader(
-    f"{TYPE_BADGE.get(analysis.profile.candidate_type, '❓')} "
-    f"· {analysis.profile.candidate_type} · "
-    f"language {analysis.profile.language.upper()}"
+tab_candidate, tab_recruiter = st.tabs(
+    ["👤 Kandidát (nahraj CV)", "🧑‍💼 Recruiter (obodovaní zájemci)"]
 )
-if analysis.processing_metadata.get("detector_reasons"):
-    st.caption("Detector reasons: " + " | ".join(analysis.processing_metadata["detector_reasons"]))
 
-if analysis.missing_fields:
-    st.warning(
-        "⚠️ Profil obsahuje chybějící data: "
-        + ", ".join(analysis.missing_fields)
-        + ". V produkčním flow by tu byl candidate-facing completion krok."
-    )
+with tab_candidate:
+    render_candidate_panel()
 
-
-# --- Two ranked lists -----------------------------------------------------
-
-left, right = st.columns(2, gap="large")
-
-
-with left:
-    st.markdown("### 📚 Students-with-potential")
-    st.caption("Vlastní scoring scale; nepřímo porovnatelný s pravým sloupcem.")
-    if not analysis.matches:
-        st.info(
-            "Žádné inzeráty neprošly hard filtrem. "
-            "Spusť `scripts/generate_synthetic_ads.py` nebo "
-            "drop scraped JSON do `data/raw_ads/scraped/`."
-        )
-    else:
-        for match in analysis.matches:
-            _render_student_match(match)
-
-
-with right:
-    st.markdown("### 💼 Experienced candidates (BAU output — mock)")
-    st.caption("Mock BAU output. V produkci přichází z BAU pipeline.")
-    for cand in _MOCK_EXPERIENCED:
-        with st.container():
-            st.markdown(f"**{TYPE_BADGE['experienced']}** {cand.name} — {cand.role}")
-            st.progress(cand.score / 100)
-            st.caption(cand.summary)
-            st.markdown("---")
-
-
-with st.expander("🔧 Raw analysis JSON"):
-    st.json(analysis.model_dump())
+with tab_recruiter:
+    render_recruiter_panel(target_ad)
 
 
 # --- ESCO attribution footer (CC BY 4.0 requirement) ---------------------
