@@ -4,7 +4,7 @@ from scripts.load_seeds import _load_checklists, _load_taxonomy, _truncate_taxon
 
 from cv_bau_students.config import LEVEL_CHECKLISTS_CSV, TAXONOMY_SEED_CSV
 from cv_bau_students.db import get_session
-from cv_bau_students.jobads.repo import list_ads, store_ad
+from cv_bau_students.jobads.repo import get_ad_by_id, list_ads, set_ad_isco, store_ad
 from cv_bau_students.models import JobAd, LanguageRequirement
 
 
@@ -29,6 +29,19 @@ def _example_ad() -> JobAd:
         raw_text="Backend developer for a medior role at Avast in Prague...",
         source="synthetic",
     )
+
+
+def test_set_ad_isco_clears_stale_code():
+    _seed_taxonomy()
+    ad_id = store_ad(_example_ad())
+    set_ad_isco(ad_id, isco_code="2511", occupation_label="data analyst", method="lexical")
+    assert get_ad_by_id(ad_id).isco_code == "2511"
+    # Re-resolution to unresolved must CLEAR the stale code (not keep it).
+    set_ad_isco(ad_id, isco_code=None, occupation_label=None, method="unresolved")
+    fetched = get_ad_by_id(ad_id)
+    assert fetched.isco_code is None
+    assert fetched.isco_occupation_label is None
+    assert fetched.isco_method == "unresolved"
 
 
 def test_store_ad_then_list_returns_normalised_skills():

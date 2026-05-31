@@ -2,8 +2,10 @@
 
 Cached via the `reasoning_cache` table: same (candidate_id, ad_id,
 prompt_hash) returns the previously generated text. Prompt hash is the
-sha256 of the rendered prompt body, so any change to the inputs (profile,
-capabilities, ad, scores) invalidates the cache automatically.
+sha256 of the rendered prompt body PLUS the generation settings (model +
+thinking mode), so any change to the inputs (profile, capabilities, ad,
+scores) OR to how the text is generated invalidates the cache — otherwise
+a model/thinking switch would keep serving stale rationales.
 """
 
 import hashlib
@@ -12,6 +14,7 @@ import json
 from sqlalchemy import select
 
 from cv_bau_students import llm
+from cv_bau_students.config import LLM_MODEL
 from cv_bau_students.db import get_session
 from cv_bau_students.db_models import ReasoningCache
 from cv_bau_students.jobads.repo import list_ads
@@ -41,7 +44,11 @@ def reason(
         ad_json=json.dumps(ad.model_dump(), ensure_ascii=False),
         language=profile.language,
     )
-    prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    # Key the cache on the prompt AND the generation settings (model +
+    # thinking mode). Switching the model or enabling adaptive thinking must
+    # bust stale rationales rather than serve the old no-thinking output.
+    cache_key = f"model={LLM_MODEL}|think=True|{prompt}"
+    prompt_hash = hashlib.sha256(cache_key.encode("utf-8")).hexdigest()
 
     if candidate_id is not None and match.ad_id is not None:
         cached = _cache_lookup(candidate_id, match.ad_id, prompt_hash)

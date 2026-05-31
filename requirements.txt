@@ -1,4 +1,7 @@
-anthropic>=0.40.0
+# Floor must include the `thinking=` parameter on Messages.create — the
+# translator + reasoning calls pass thinking={"type":"adaptive"}; older SDKs
+# (e.g. 0.40) reject the kwarg with TypeError before reaching the API.
+anthropic>=0.101.0
 streamlit>=1.32.0
 pydantic>=2.5.0
 sqlalchemy>=2.0.0

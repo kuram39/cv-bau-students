@@ -29,6 +29,7 @@ Status legend:
 | 8 | Skill taxonomy is mock (50 skills) | Many real CV skills miss the canonical name → 0 alias hits | 🟡 ESCO v1.2.1 documented in `docs/TAXONOMY_SOURCES.md` — 13 939 skills, native Czech, CC BY 4.0 download. Effort to load: ~8-12 h | Same |
 | 9 | Bridge fit lied (100.0) when no rubric | Recruiter saw "perfect ready" on uncalibrated domain | ✅ `checklist_exists` + `-1.0` sentinel; matcher drops bridge axis from weighted sum when absent | Broaden checklists to cover every domain in corpus |
 | 10 | Long ad / CV body fills the LLM context | Reasoning pass against 5 ads + profile approaches Claude's 200K token cap on extreme inputs | 🟡 Quick: truncate `raw_text` at ingest to 2000 chars. Real (planned): LLM-summarize each ad once at ingest, persist summary, reasoning reads summary | LLM summary at ingest (~$0.001 / ad one-time) |
+| 22 | `skill_fit` resolves audit names per scored ad | `names_for_ids` round-trips for every ad in the pool before top-N is kept | 🟡 Batched to ~2 lookups/ad (was 5); SQL pre-filter bounds the pool | Score on ids only; resolve names once for the retained top-N matches (display layer) |
 
 ## Tier 3 — would fail in scale-up (100+ concurrent users)
 

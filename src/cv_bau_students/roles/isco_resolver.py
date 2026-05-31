@@ -66,17 +66,25 @@ def _en_label_for_isco(occupations: Iterable[Occupation], isco_code: str, fallba
 
 
 def _score_label(label_norm: str, haystack: str) -> int:
-    """Higher = stronger lexical match of one occupation label vs. the ad text."""
+    """Higher = stronger lexical match of one occupation label vs. the ad text.
+
+    Only two signals are trusted:
+      - exact normalised equality, or
+      - a multiword occupation label that appears verbatim *inside* the ad
+        text (`label_norm in haystack`).
+
+    The reverse direction (`haystack in label_norm`) is deliberately NOT
+    accepted: it let a generic one-word title like "Data" trust-match any
+    multiword occupation containing that token (e.g. "data analyst"),
+    attaching the wrong ISCO code. Ambiguous short inputs now fall through
+    to the shortlist / LLM path instead.
+    """
     if not label_norm:
         return 0
     if label_norm == haystack:
         return 1000 + len(label_norm)
     multiword = " " in label_norm
-    if (
-        multiword
-        and len(label_norm) >= _MIN_SUBSTRING_LEN
-        and (label_norm in haystack or haystack in label_norm)
-    ):
+    if multiword and len(label_norm) >= _MIN_SUBSTRING_LEN and label_norm in haystack:
         return 500 + len(label_norm)
     return 0
 

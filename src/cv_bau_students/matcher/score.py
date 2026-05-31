@@ -125,10 +125,12 @@ def _skill_fit(
     plus a `SkillFitDetail` audit trail for the recruiter panel.
     """
     base = _base_skill_fit(candidate, must, nice)
+    # One name lookup for all three must/nice subsets (was three queries).
+    namemap = names_for_ids((candidate & must) | (must - candidate) | (candidate & nice))
     detail = SkillFitDetail(
-        matched_must=_names(candidate & must),
-        missing_must=_names(must - candidate),
-        matched_nice=_names(candidate & nice),
+        matched_must=_sorted_names(candidate & must, namemap),
+        missing_must=_sorted_names(must - candidate, namemap),
+        matched_nice=_sorted_names(candidate & nice, namemap),
     )
 
     base, detail = _apply_role_enrichment(base, detail, candidate_esco, must_esco, ad)
@@ -171,13 +173,14 @@ def _apply_role_enrichment(
     extra = evidenced - must_esco  # role skills beyond the recruiter must-haves
     bonus = min(ROLE_BONUS_CAP, len(extra) * ROLE_BONUS_PER)
 
-    missing_sample = sorted(role_set - candidate_esco)[:ROLE_ESSENTIAL_GAP_SAMPLE]
+    missing_sample = set(sorted(role_set - candidate_esco)[:ROLE_ESSENTIAL_GAP_SAMPLE])
+    namemap = names_for_ids(evidenced | missing_sample)  # one lookup for both lists
     detail.isco_code = ad.isco_code
     detail.occupation_label = ad.isco_occupation_label
     detail.role_essential_total = len(role_set)
     detail.role_essential_evidenced = len(evidenced)
-    detail.role_essential_matched = _names(evidenced)
-    detail.role_essential_missing = _names(missing_sample)
+    detail.role_essential_matched = _sorted_names(evidenced, namemap)
+    detail.role_essential_missing = _sorted_names(missing_sample, namemap)
     detail.bonus_applied = round(bonus, 1)
     return base + bonus, detail
 
@@ -205,10 +208,10 @@ def _resolve_candidate_esco_ids(
     return ids
 
 
-def _names(skill_ids: Iterable[int]) -> list[str]:
-    """Resolve a set/list of skill_ids to sorted canonical names."""
-    mapping = names_for_ids(skill_ids)
-    return sorted(mapping.values())
+def _sorted_names(skill_ids: Iterable[int], namemap: dict[int, str]) -> list[str]:
+    """Sorted canonical names for the given ids, using a prebuilt name map
+    (so callers batch one `names_for_ids` query instead of one per subset)."""
+    return sorted(namemap[i] for i in skill_ids if i in namemap)
 
 
 def _bridge_fit(gaps: list[GapItem], *, has_rubric: bool) -> float | None:
