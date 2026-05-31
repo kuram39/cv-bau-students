@@ -35,7 +35,7 @@ Status legend:
 
 | # | Failure | Symptom | Status | Real fix later |
 |---|---|---|---|---|
-| 11 | SQLite + StaticPool | Concurrent writes serialize | ⏳ | Postgres + pgvector (one env-var change thanks to SQLAlchemy) |
+| 11 | SQLite + StaticPool | Concurrent writes serialize | 🟡 Postgres persistence path shipped (#16) — `CV_BAU_STUDENTS_DB_URL` env var + `psycopg2-binary`; migration script in `scripts/migrate_sqlite_to_postgres.py`. Prod env var switches the engine; schema unchanged. | pgvector extension for semantic skill search |
 | 12 | Pipeline sync blocking | `analyze_candidate` holds worker 60-90s | ⏳ | Async pipeline + queue (FastAPI + Celery) |
 | 13 | CV parsing accuracy (pypdf) | Multi-column / scanned CVs → empty text | ⏳ | Unstructured.io / AWS Textract |
 | 14 | No observability | Don't know when LLM returned 500 | ⏳ | Structured logs + Sentry / Datadog |
@@ -176,6 +176,13 @@ The optimisation itself is intentionally **not** applied here — it
 lands on a `perf/llm-cost` branch as the first PR through the new CI
 gate (see `CONTRIBUTING.md`), keeping the quality-tuned path on `main`
 until measured.
+
+## Tier 5 — deployment / operations (new since #16)
+
+| # | Risk | Symptom | Status | Real fix |
+|---|---|---|---|---|
+| 23 | Recruiter skill-picker fallback invisible | Coverage shows `3/520`; recruiter doesn't know they need to configure the picker | ⏳ `SkillFitDetail.target_source` is tracked but not surfaced in UI | Add `st.info` callout when `target_source == 'isco'` (see R6 in `REVIEW_2026-05-31.md`) |
+| 24 | `psycopg2-binary` Python 3.12 / Cloud friction | `pip install psycopg2-binary` fails on Neon/Supabase deploy (missing `libpq`) | ⏳ | Replace with `psycopg[binary]>=3.1` (psycopg3) + dialect `postgresql+psycopg://` |
 
 This document is the answer key for the round-2 interview — not the
 roadmap. The roadmap is whatever real users break first.
