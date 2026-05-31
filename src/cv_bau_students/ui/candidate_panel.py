@@ -131,7 +131,18 @@ def _match_reasoning_line(match) -> str:
     import json
 
     if not match.reasoning:
-        return f"Celkový fit (vidí recruiter): skryté · pozice ad #{match.ad_id}"
+        # No LLM verdict at preview time (deferred to express-interest) — build a
+        # deterministic "why it fits" from the matcher's own skill_fit_detail.
+        d = getattr(match, "skill_fit_detail", None)
+        if d is not None:
+            hit = ", ".join((d.matched_must + d.matched_nice)[:4]) or "—"
+            parts = [f"Sedí: {hit}"]
+            if d.missing_must:
+                parts.append(f"chybí: {', '.join(d.missing_must[:3])}")
+            if d.role_essential_total:
+                parts.append(f"role {d.role_essential_evidenced}/{d.role_essential_total}")
+            return "Proč ti sedne — " + " · ".join(parts)
+        return f"Skill fit: {match.skill_fit:.0f}/100 · pozice ad #{match.ad_id}"
     try:
         payload = json.loads(match.reasoning)
         return "Proč ti sedne: " + str(payload.get("verdict", ""))[:240]

@@ -12,11 +12,10 @@ yourself, the agent harness scrubs the key):
   2. Generate the role-specific question template ONCE (LLM). Every
      candidate then answers the same questions.
   3. For each CV in data/raw_cv_samples/{students,experienced}/:
-       - run_generic_pass  → candidate persisted
-       - express_interest('interested') → fixed Qs + prefill suggestions
-       - submit_role_specific(...) using the prefills as accept-as-is;
-         any "missing" prefill is fabricated with one extra LLM call so
-         the seed is self-contained.
+       - run_generic_pass  → candidate persisted (extract + translate only)
+       - express_interest('interested') → AI questionnaire (questions only)
+       - submit_role_specific(..., answers={}) → score + reason the Match.
+         No AI-drafted answers (the questionnaire is left blank in the seed).
   4. Print a per-CV summary.
 
 Idempotent: cv_hash dedup means re-running updates rather than
@@ -35,7 +34,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from cv_bau_students import llm
 from cv_bau_students.jobads.repo import (
     find_ad_by_title_substring,
     resolve_ad_isco,
@@ -86,30 +84,13 @@ def _modify_target_ad(ad) -> None:
     )
 
 
-def _fabricate_answer(profile_summary: str, question_text: str) -> str:
-    """One LLM call to write a plausible answer when the CV had nothing.
-
-    Only used by the seed so the demo candidates all have complete role
-    answers; the live UI leaves missing prefills for the user to write.
-    """
-    prompt = (
-        "Napiš realistickou 2-3větnou odpověď z pohledu tohoto kandidáta "
-        "na otázku v přihlášce. Drž se jeho profilu, nepřeháněj.\n\n"
-        f"Profil (shrnutí): {profile_summary}\n\n"
-        f"Otázka: {question_text}\n\nOdpověď:"
-    )
-    # Opus 4.8 removed `temperature`; the candidate profile in the prompt
-    # grounds the answer, so no sampling knob is needed.
-    msg = llm._client().messages.create(
-        model=llm.LLM_MODEL,
-        max_tokens=300,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
-
-
 def _process_cv(path: Path, ad_id: int) -> dict:
-    """Walk one CV through the full interested journey. Returns a summary."""
+    """Walk one CV through the interested journey. Returns a summary.
+
+    No AI-drafted answers: the AI value is the questions (generated once per
+    ad). The seed submits empty answers — the Match is still scored + reasoned,
+    matching the live flow before a candidate types their answers.
+    """
     file_bytes = path.read_bytes()
     gen = run_generic_pass(file_bytes, path.name)
     if gen.status == "needs_completion":
@@ -120,27 +101,14 @@ def _process_cv(path: Path, ad_id: int) -> dict:
             "note": "BAU-mandatory fields missing; skipped role-specific.",
         }
 
-    interest = express_interest(gen.candidate_id, ad_id, "interested")
-
-    # Build the answer set from prefills; fabricate where missing.
-    answers: dict[str, str] = {}
-    prefilled_set: set[str] = set()
-    fabricated: list[str] = []
-    summary = gen.profile.summary or gen.profile.name or path.stem
-    for q in interest.prefilled_questions:
-        if q.prefilled_answer:
-            answers[q.slot] = q.prefilled_answer
-            prefilled_set.add(q.slot)
-        else:
-            answers[q.slot] = _fabricate_answer(summary, q.question_text)
-            fabricated.append(q.slot)
+    express_interest(gen.candidate_id, ad_id, "interested")  # ensures + caches the AI questions
 
     result = submit_role_specific(
         gen.candidate_id,
         ad_id,
-        answers=answers,
-        prefilled_set=prefilled_set,
-        edited_set=set(),  # seed accepts prefills as-is
+        answers={},  # seed leaves the questionnaire blank (no AI-fabricated answers)
+        prefilled_set=set(),
+        edited_set=set(),
     )
     return {
         "file": path.name,
@@ -151,8 +119,6 @@ def _process_cv(path: Path, ad_id: int) -> dict:
         "skill_fit": round(result.match.skill_fit, 1),
         "bridge_fit": round(result.match.bridge_fit, 1),
         "personal_fit": round(result.match.personal_fit, 1),
-        "prefilled_slots": sorted(prefilled_set),
-        "fabricated_slots": fabricated,
     }
 
 
@@ -209,8 +175,7 @@ def run_seed(target_title: str = "Datový analytik") -> int:
             print(
                 f"  {path.name}: {summary['kind']} total={summary['total']} "
                 f"(skill={summary['skill_fit']} bridge={summary['bridge_fit']} "
-                f"personal={summary['personal_fit']}) "
-                f"fabricated={summary['fabricated_slots']}"
+                f"personal={summary['personal_fit']})"
             )
         else:
             print(f"  {path.name}: {summary['status']} — {summary.get('note', '')}")
