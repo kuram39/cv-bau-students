@@ -123,11 +123,11 @@ def _render_target_skill_picker(ad: JobAd) -> None:
                 optional=[name_to_id[n] for n in chosen_opt if n in name_to_id],
             )
             if not chosen_core and not chosen_opt:
-                # Empty selection = no curation → matcher uses the full ESCO
-                # role set. Say so, rather than implying scoring uses "nothing".
+                # Empty selection = no curation → matcher falls back to the ad's
+                # must + nice-to-have as the coverage target.
                 st.info(
-                    "Prázdný výběr — kurátorská sada zrušena. Skóre použije výchozí "
-                    "ESCO sadu role (essential+optional). Přepočítej skóre."
+                    "Prázdný výběr — kurátorská sada zrušena. Skóre použije "
+                    "must + nice-to-have z inzerátu. Přepočítej skóre."
                 )
             else:
                 st.success(
@@ -170,11 +170,12 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
         return
 
     m = detail.match
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Skill fit", f"{m.skill_fit:.0f}")
+    # Headline = skill coverage. Bridge = secondary "potential/growth" signal.
+    # personal_fit retired (not shown).
+    c1, c2 = st.columns(2)
+    c1.metric("Skill coverage", f"{m.skill_fit:.0f} %")
     bridge_display = f"{m.bridge_fit:.0f}" if m.bridge_fit >= 0 else "N/A"
-    c2.metric("Bridge fit", bridge_display)
-    c3.metric("Personal fit", f"{m.personal_fit:.0f}")
+    c2.metric("Bridge fit (potenciál)", bridge_display)
 
     _render_skill_fit_detail(m.skill_fit_detail)
 
@@ -244,23 +245,16 @@ def _render_skill_fit_detail(d) -> None:
     if d.missing_must:
         st.caption(f"❌ Chybí must: {', '.join(d.missing_must)}")
 
-    # Legacy match rows (pre-target_source) carry isco_code/coverage but no
-    # target_source — fall back to "isco" so their role coverage still shows
-    # without needing every stored match recomputed.
-    if d.target_source or d.isco_code:
-        bonus = f" · bonus +{d.bonus_applied:.0f}" if d.bonus_applied else ""
-        if d.target_source == "curated":
-            src = "náborářem vybrané cílové dovednosti"
-        else:
-            label = d.occupation_label or "—"
-            src = f"ESCO role {label} (ISCO {d.isco_code}, essential+optional)"
+    # Headline coverage: which target-skill set drove the % + matched/missing.
+    if d.role_essential_total:
+        src = {
+            "curated": "náborářem vybrané cílové dovednosti",
+            "must_nice": "must + nice-to-have z inzerátu",
+        }.get(d.target_source, "cílové dovednosti")
         st.caption(
-            f"🎯 Role coverage — evidováno "
-            f"{d.role_essential_evidenced}/{d.role_essential_total} · {src}{bonus}"
+            f"🎯 Skill coverage — {d.role_essential_evidenced}/{d.role_essential_total} " f"({src})"
         )
         if d.role_essential_matched:
-            st.caption("🟢 Role-essential prokázané: " + " · ".join(d.role_essential_matched))
+            st.caption("🟢 Prokázané: " + " · ".join(d.role_essential_matched))
         if d.role_essential_missing:
-            st.caption(
-                "⚪ Role-essential chybějící (ukázka): " + " · ".join(d.role_essential_missing)
-            )
+            st.caption("⚪ Chybějící (ukázka): " + " · ".join(d.role_essential_missing))
