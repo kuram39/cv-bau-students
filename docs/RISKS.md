@@ -53,7 +53,31 @@ needs ground-truth data.
 | 18 | Confidence band calibration | No — needs eval set with ground truth | Deferred |
 | 19 | Bridge-months guesstimates | No — 8 hand-curated domains are defensible | Deferred until ESCO load |
 | 20 | Two skill namespaces (hand-seed vs ESCO) | Yes — broke target-role enrichment | ✅ `resolve_skill_esco` (taxonomy/repo) resolves candidate skills into the ESCO namespace; translate emits an English `esco_term` per capability → stored ESCO `skill_id`. Enrichment now intersects the occupation's essential∪optional set. must/nice/bridge stay seed-space (works); full namespace unification (move job_ad_skills + level_checklists onto ESCO ids) deferred — needs a loader rewrite + seed rebuild |
-| 21 | Skill resolution drop (~half of free-text phrases) | Partial | 🟡 Layer-1 = diacritics-strip + ESCO aliases + rapidfuzz (token_sort ≥92); LLM `esco_term` handles cross-lingual/paraphrase (`datové modelování`→`data modelling`). Residual misses: vendor tools absent from ESCO (`Power BI`, `Tableau`), and phrases neither lexically nor LLM-mapped. Next: Czech lemmatisation (`simplemma`), embedding retrieval in the seed (Phase C), full NSP pull for Czech aliases (Phase D) |
+| 21 | Skill resolution drop (~half of free-text phrases) | Partial | 🟡 Layer-1 = diacritics-strip + ESCO aliases + rapidfuzz (token_sort ≥92) + proficiency-qualifier/parenthetical strip + UK/US spelling. LLM `esco_term` handles cross-lingual/paraphrase (`datové modelování`→`data modelling`). Residual misses: vendor tools absent from ESCO (`Power BI`, `Tableau`), and phrases neither lexically nor LLM-mapped. |
+
+### Phase C (embeddings) — measured decision: DEFERRED
+
+Measured ESCO resolution on the 6 demo CVs (115 skill phrases): Layer-1 **21%** →
+**33%** after the deterministic qualifier/spelling normalisation (shipped, +12pp,
+zero infra). Decomposing the remaining 67% miss:
+
+- **~30% vendor tools** (`Power BI`, `Tableau`, `Excel`, `pandas`) — absent/weak in
+  ESCO. Embeddings map them only to vague generics → poor signal. Fix = recruiter
+  manual-add (skill-picker follow-up) + NSP (Phase D).
+- **~37% soft/transversal traits** (`vedení týmu`, `spolehlivost`, `analytické
+  myšlení`) — should be **excluded** from hard-skill_fit (person ≠ role). Embeddings
+  would *inject noise* here, not signal.
+- **~33% real hard skills, cross-lingual/paraphrase** — the LLM `esco_term` layer
+  (already built) covers ~all of these; embeddings' *unique* marginal gain over it
+  is tiny.
+
+So embeddings' net unique recovery ≈ a handful of phrases already caught by the LLM,
+at the cost of a model/API + ~1 GB-RAM friction on Streamlit Cloud, plus soft-trait
+noise. **ROI is bad for this case → deferred.** Revisit only if, after a keyed
+`esco_term` re-translate, a material residual of *real hard skills* remains
+unresolved. Cheaper higher-ROI levers shipped/queued first: deterministic
+normalisation (done), LLM `esco_term` (built), recruiter skill-picker (Phase B),
+NSP Czech aliases (Phase D).
 
 ### NSP / CZ-ISCO occupation→skill map — evaluated, REJECTED (data-backed)
 

@@ -126,6 +126,29 @@ def test_resolve_skill_esco_fuzzy_match():
     assert match[0] == ids["data modelling"]
 
 
+def test_resolve_skill_esco_strips_proficiency_qualifiers():
+    """ "SQL (pokročilý)", "základy SQL", "SQL advanced" all resolve to SQL."""
+    ids = _seed_esco([{"cn": "SQL", "en": "SQL", "uri": "uri:sql"}])
+    for variant in ("SQL (pokročilý)", "základy SQL", "SQL advanced", "SQL (expert)"):
+        match = resolve_skill_esco(variant)
+        assert match is not None, variant
+        assert match[0] == ids["SQL"], variant
+
+
+def test_resolve_skill_esco_drops_parenthetical_noise():
+    ids = _seed_esco([{"cn": "Python", "en": "Python", "uri": "uri:py"}])
+    match = resolve_skill_esco("Python (pandas, numpy)")
+    assert match is not None
+    assert match[0] == ids["Python"]
+
+
+def test_resolve_skill_esco_uk_us_spelling():
+    ids = _seed_esco([{"cn": "data visualisation", "en": "data visualisation", "uri": "uri:dv"}])
+    match = resolve_skill_esco("data visualization")  # US spelling
+    assert match is not None
+    assert match[0] == ids["data visualisation"]
+
+
 def test_resolve_skill_esco_none_for_seed_only_skill():
     with get_session() as session:
         session.add(Skill(canonical_name="Power BI"))  # no esco_uri
