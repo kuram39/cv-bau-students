@@ -62,7 +62,7 @@ def _step_upload() -> None:
         "zkušenosti, hard + soft skills, jazyky) a najde vhodné pozice. "
         "Skóre vidí pouze recruiter."
     )
-    uploaded = st.file_uploader("CV (PDF / DOCX / TXT)", type=["pdf", "docx", "txt"])
+    uploaded = st.file_uploader("CV (PDF / DOCX / TXT / MD)", type=["pdf", "docx", "txt", "md"])
     if uploaded and st.button("🚀 Najít pozice", type="primary"):
         with st.spinner("Zpracovávám CV (~4 LLM volání, ~30 s)…"):
             try:

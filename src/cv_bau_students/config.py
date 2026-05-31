@@ -14,9 +14,13 @@ PROMPTS_DIR = PACKAGE_ROOT / "prompts"
 DATA_DIR = PACKAGE_ROOT / "data"
 
 # --- Anthropic API ---
-LLM_MODEL = "claude-sonnet-4-5"
+# Opus 4.8 removed sampling parameters (temperature / top_p / top_k) — sending
+# any of them returns 400. Determinism for these JSON-extraction tasks now comes
+# from the frozen prompts, not a temperature setting. Adaptive thinking is left
+# off (field omitted) to preserve the prior no-thinking behaviour and keep the
+# per-call cost down — these are structured extraction calls, not open reasoning.
+LLM_MODEL = "claude-opus-4-8"
 LLM_MAX_TOKENS = 4096
-LLM_TEMPERATURE = 0.0
 
 # --- Pipeline budgets ---
 COMPLETION_MAX_ROUNDS = 2

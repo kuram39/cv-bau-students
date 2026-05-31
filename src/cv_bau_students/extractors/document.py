@@ -20,9 +20,11 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
         return _read_pdf(file_bytes)
     if suffix == ".docx":
         return _read_docx(file_bytes)
-    if suffix == ".txt":
+    # .md is plain UTF-8 like .txt — and a more LLM-friendly upload format
+    # since the structure (headings, lists) survives intact for the extractor.
+    if suffix in (".txt", ".md"):
         return file_bytes.decode("utf-8", errors="replace")
-    raise ValueError(f"Unsupported file type: {suffix} (expected .pdf, .docx, .txt)")
+    raise ValueError(f"Unsupported file type: {suffix} (expected .pdf, .docx, .txt, .md)")
 
 
 def _read_pdf(data: bytes) -> str:

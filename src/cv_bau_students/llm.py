@@ -2,7 +2,8 @@
 
 Loads prompts from `prompts/*.md`, fills `{var}` placeholders via
 `str.replace` (so JSON braces in the prompt body don't need escaping),
-calls Claude with low temperature, parses the JSON-only response.
+calls Claude (Opus 4.8), parses the JSON-only response. Determinism comes
+from the frozen prompts — Opus 4.8 removed the `temperature` parameter.
 
 Mirrors cv-estimator/llm.py — proven pattern, do not divergently
 refactor.
@@ -14,7 +15,7 @@ import re
 from functools import lru_cache
 from typing import Any
 
-from cv_bau_students.config import LLM_MAX_TOKENS, LLM_MODEL, LLM_TEMPERATURE, PROMPTS_DIR
+from cv_bau_students.config import LLM_MAX_TOKENS, LLM_MODEL, PROMPTS_DIR
 
 
 @lru_cache(maxsize=1)
@@ -64,7 +65,6 @@ def call_json(prompt: str, *, max_tokens: int = LLM_MAX_TOKENS) -> dict:
     msg = _client().messages.create(
         model=LLM_MODEL,
         max_tokens=max_tokens,
-        temperature=LLM_TEMPERATURE,
         messages=[{"role": "user", "content": prompt}],
     )
     raw = "".join(block.text for block in msg.content if getattr(block, "type", None) == "text")

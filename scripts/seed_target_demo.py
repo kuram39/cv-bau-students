@@ -94,10 +94,11 @@ def _fabricate_answer(profile_summary: str, question_text: str) -> str:
         f"Profil (shrnutí): {profile_summary}\n\n"
         f"Otázka: {question_text}\n\nOdpověď:"
     )
+    # Opus 4.8 removed `temperature`; the candidate profile in the prompt
+    # grounds the answer, so no sampling knob is needed.
     msg = llm._client().messages.create(
         model=llm.LLM_MODEL,
         max_tokens=300,
-        temperature=0.6,
         messages=[{"role": "user", "content": prompt}],
     )
     return "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
