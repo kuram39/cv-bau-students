@@ -135,6 +135,9 @@ def main() -> int:
         n_skills = len(canonical_to_id)
         n_checklist = _load_checklists(session, LEVEL_CHECKLISTS_CSV, canonical_to_id)
 
+    from cv_bau_students.taxonomy.repo import clear_resolution_caches
+
+    clear_resolution_caches()  # taxonomy changed → drop memoized resolution
     print(f"Loaded {n_skills} skills + {n_checklist} checklist rows.")
     return 0
 

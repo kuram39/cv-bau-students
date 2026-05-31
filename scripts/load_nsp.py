@@ -299,6 +299,12 @@ def main_args(
         aliases += a
         skipped += 1 - t  # t is 0 when an alias-only competency had no ESCO match
 
+    # Loaded skills/aliases changed → drop memoized resolution so later lookups
+    # (in this process or a follow-up step) see the new rows.
+    from cv_bau_students.taxonomy.repo import clear_resolution_caches
+
+    clear_resolution_caches()
+
     if verbose:
         tail = f" (skipped {skipped} unmatched)" if aliases_only else ""
         print(f"Touched {touched} skills, added {aliases} NSP aliases{tail}.")

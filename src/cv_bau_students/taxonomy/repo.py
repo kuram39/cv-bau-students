@@ -68,6 +68,7 @@ def canonicalize_skill_phrase(name: str) -> str:
     return " ".join(norm.split())
 
 
+@lru_cache(maxsize=8192)
 def resolve_skill(name: str) -> tuple[int, str] | None:
     """Map a raw skill string to (canonical_id, canonical_name).
 
@@ -77,6 +78,11 @@ def resolve_skill(name: str) -> tuple[int, str] | None:
 
     Returns None when no match. Aliases are deduplicated by (alias, lang,
     source) at the DB level so the first match is canonical.
+
+    Memoized: the matcher ranks a candidate against many ads, re-resolving the
+    same skill strings each time; the diacritics fallback also fuzz-scans the
+    full index, so caching by name turns per-ad re-resolution into O(1).
+    Cleared per test via conftest; loaders run as one-shot processes.
     """
     if not name:
         return None
@@ -174,6 +180,7 @@ def _esco_index() -> tuple[dict[str, int], list[str]]:
     return index, list(index.keys())
 
 
+@lru_cache(maxsize=8192)
 def resolve_skill_esco(name: str) -> tuple[int, str] | None:
     """Resolve a free-text skill into the ESCO namespace (id, canonical_name).
 
@@ -181,6 +188,10 @@ def resolve_skill_esco(name: str) -> tuple[int, str] | None:
     the ESCO label index, accepted at `_FUZZY_THRESHOLD`). ESCO-only, so the
     id is comparable with `expected_skills_for_isco`. Returns None when no
     confident match — the caller then skips that skill rather than guessing.
+
+    Memoized: each fuzzy miss scans the ~90k-entry index, and the matcher
+    re-resolves the same candidate/ad skills once per scored ad — caching by
+    name collapses that to one scan per unique string. Cleared per test.
     """
     if not name:
         return None
@@ -258,6 +269,19 @@ def descendants_of(parent_id: int) -> list[int]:
             queue.extend(child_ids)
     seen.discard(parent_id)
     return sorted(seen)
+
+
+def clear_resolution_caches() -> None:
+    """Invalidate all memoized resolution/index state.
+
+    The resolvers + indexes are lru_cached on DB content; call this after a
+    loader mutates `skills`/`skill_aliases` so a later lookup in the same
+    process doesn't return a stale (often negative) cached result."""
+    resolve_skill.cache_clear()
+    resolve_skill_esco.cache_clear()
+    canonical_for_alias.cache_clear()
+    _seed_skill_index.cache_clear()
+    _esco_index.cache_clear()
 
 
 @lru_cache(maxsize=256)

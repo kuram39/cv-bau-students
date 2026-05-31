@@ -362,6 +362,9 @@ def main_args(
                 f"first={skipped_offsets[:3]} last={skipped_offsets[-3:]}",
                 file=sys.stderr,
             )
+    from cv_bau_students.taxonomy.repo import clear_resolution_caches
+
+    clear_resolution_caches()  # skills/aliases changed → drop memoized resolution
     return 0
 
 

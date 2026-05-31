@@ -30,10 +30,14 @@ def _clear_taxonomy_caches() -> None:
         _esco_index,
         _seed_skill_index,
         canonical_for_alias,
+        resolve_skill,
+        resolve_skill_esco,
     )
     from cv_bau_students.translator.translate import _translate_raw
 
     _esco_index.cache_clear()
     _seed_skill_index.cache_clear()
     canonical_for_alias.cache_clear()
+    resolve_skill.cache_clear()
+    resolve_skill_esco.cache_clear()
     _translate_raw.cache_clear()
