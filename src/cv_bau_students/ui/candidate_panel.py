@@ -178,8 +178,8 @@ def _step_role_form() -> None:
     interest = InterestResult.model_validate(st.session_state["interest_result"])
     st.markdown("### 📝 Pár otázek k pozici")
     st.caption(
-        "Některé odpovědi jsme za tebe předvyplnili z CV — zkontroluj je, "
-        "uprav nebo nech být. Otázky jsou stejné pro všechny uchazeče."
+        "Tyto doplňující otázky pomáhají odhalit dovednosti, které z CV nemusí "
+        "být patrné. Odpověz vlastními slovy. Otázky jsou stejné pro všechny uchazeče."
     )
 
     with st.form("role_form"):
@@ -188,12 +188,7 @@ def _step_role_form() -> None:
         for q in interest.prefilled_questions:
             default = q.prefilled_answer or ""
             prefilled_defaults[q.slot] = default
-            label = q.question_text
-            if q.prefilled_answer:
-                label += "  · 🤖 AI návrh — můžeš upravit"
-            else:
-                label += "  · ✍️ doplň prosím"
-            inputs[q.slot] = st.text_area(label, value=default, key=f"rf_{q.slot}")
+            inputs[q.slot] = st.text_area(q.question_text, value=default, key=f"rf_{q.slot}")
         submitted = st.form_submit_button("Odeslat přihlášku", type="primary")
 
     if submitted:
