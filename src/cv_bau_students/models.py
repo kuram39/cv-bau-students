@@ -114,6 +114,13 @@ class TranslatedCapability(BaseModel):
     caveat: str | None = None  # short hedge in CV language
     source_type: SourceType
     relevance: Requirement = "nice_to_have"
+    # ESCO normalisation: the LLM emits `esco_term` (English ESCO label) so the
+    # phrase can be linked to the European skills taxonomy across languages;
+    # `skill_id` is the resolved ESCO skill id (None when unresolved). Used by
+    # the target-role enrichment so candidate skills share the occupation map's
+    # namespace. `skill` stays as the display name.
+    esco_term: str | None = None
+    skill_id: int | None = None
 
 
 class CompletionQuestion(BaseModel):

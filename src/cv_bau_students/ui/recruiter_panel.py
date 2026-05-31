@@ -191,7 +191,8 @@ def _render_skill_fit_detail(d) -> None:
         bonus = f" · bonus +{d.bonus_applied:.0f}" if d.bonus_applied else ""
         st.caption(
             f"🎯 Role: {label} (ISCO {d.isco_code}) — evidováno "
-            f"{d.role_essential_evidenced}/{d.role_essential_total} essential ESCO skills"
+            f"{d.role_essential_evidenced}/{d.role_essential_total} "
+            f"role-relevantních ESCO skills (essential+optional)"
             f"{bonus}"
         )
         if d.role_essential_matched:

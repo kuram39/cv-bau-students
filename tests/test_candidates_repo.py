@@ -331,6 +331,29 @@ def test_store_initial_candidate_persists_raw_cv_text():
     assert "churn prediction" in detail.raw_cv_text
 
 
+def test_capability_esco_fields_round_trip():
+    cap = TranslatedCapability(
+        skill="programování v Pythonu",
+        evidence_quote="thesis",
+        confidence=0.7,
+        source_type="thesis",
+        relevance="must_have",
+        esco_term="python",
+        skill_id=4242,
+    )
+    cid = repo.store_initial_candidate(
+        file_hash="h-esco", profile=_student_profile(), capabilities=[cap]
+    )
+    ad_id = _make_ad()
+    repo.record_interest(cid, ad_id, "interested")
+    repo.store_match(cid, ad_id, match=_make_match(ad_id))
+    detail = repo.get_candidate_detail(cid, ad_id)
+    assert detail is not None
+    got = detail.capabilities[0]
+    assert got.esco_term == "python"
+    assert got.skill_id == 4242
+
+
 def test_skill_fit_detail_round_trips():
     profile = _student_profile()
     cid = repo.store_initial_candidate(file_hash="h-sfd", profile=profile, capabilities=[])

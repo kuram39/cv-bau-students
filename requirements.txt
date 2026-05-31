@@ -7,6 +7,7 @@ python-docx>=1.1.0
 plotly>=5.18.0
 pandas>=2.1.0
 python-dotenv>=1.0.0
+rapidfuzz>=3.0.0
 # Install the local cv_bau_students package itself. Streamlit Cloud only
 # runs `pip install -r requirements.txt`; without `.` the imports fail
 # at startup. Same lesson as cv-estimator.

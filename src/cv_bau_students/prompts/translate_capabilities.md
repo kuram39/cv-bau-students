@@ -23,11 +23,19 @@ Return a single JSON object — no prose, no markdown fences:
       "confidence": <float 0.0 - 1.0>,
       "caveat": "<short hedge in profile language, or null>",
       "source_type": "thesis" | "school_project" | "internship" | "brigada" | "hobby" | "open_source" | "certification" | "course" | "language" | "other",
-      "relevance": "must_have" | "nice_to_have"
+      "relevance": "must_have" | "nice_to_have",
+      "esco_term": "<standard ENGLISH ESCO skill label, even when `skill` is Czech — e.g. 'data cleansing', 'data modelling', 'database management systems', 'machine learning'. null only if nothing maps.>"
     }
   ]
 }
 ```
+
+**`esco_term` matters:** downstream matching links each capability to the ESCO skills
+taxonomy by this term, so candidates are comparable against a job's required skills.
+Always give the canonical **English** ESCO name (the taxonomy is English-keyed),
+regardless of the CV's language — e.g. CV "datové modelování" → `esco_term: "data modelling"`,
+"čištění dat" → `esco_term: "data cleansing"`. This does **not** change `skill` (keep that
+as the human-readable name you'd show a recruiter).
 
 ## Skepticism principles (carry over from cv-estimator)
 

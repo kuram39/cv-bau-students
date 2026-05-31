@@ -20,7 +20,6 @@ when nothing fits — the matcher then skips ESCO enrichment entirely.
 
 from __future__ import annotations
 
-import unicodedata
 from collections.abc import Iterable
 
 from sqlalchemy import select
@@ -28,6 +27,7 @@ from sqlalchemy import select
 from cv_bau_students import llm
 from cv_bau_students.db import get_session
 from cv_bau_students.db_models import Occupation
+from cv_bau_students.taxonomy.repo import normalize as _normalize
 
 # Lexical thresholds. A multiword occupation label that appears verbatim
 # inside the ad title is a strong signal; a single-word label only counts
@@ -35,16 +35,6 @@ from cv_bau_students.db_models import Occupation
 _MIN_SUBSTRING_LEN = 6
 _LEXICAL_ACCEPT = 500  # min score to trust a lexical hit without the LLM
 _SHORTLIST_SIZE = 30
-
-
-def _normalize(text: str | None) -> str:
-    """Lowercase, strip diacritics, drop punctuation, collapse whitespace."""
-    if not text:
-        return ""
-    decomposed = unicodedata.normalize("NFKD", text)
-    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
-    cleaned = "".join(c if c.isalnum() else " " for c in stripped.lower())
-    return " ".join(cleaned.split())
 
 
 def _labels_for(occ: Occupation) -> list[str]:

@@ -9,8 +9,26 @@ from unittest.mock import patch
 
 import pytest
 
+from cv_bau_students.db import get_session
+from cv_bau_students.db_models import Skill, SkillAlias
 from cv_bau_students.models import CandidateProfile, SchoolProjectItem
+from cv_bau_students.taxonomy.repo import _esco_index
 from cv_bau_students.translator.translate import _translate_raw, translate
+
+
+def _seed_esco_python() -> int:
+    with get_session() as session:
+        s = Skill(
+            canonical_name="Python (počítačové programování)",
+            canonical_name_en="Python (computer programming)",
+            esco_uri="uri:py",
+        )
+        session.add(s)
+        session.flush()
+        session.add(SkillAlias(alias="python", canonical_id=s.id, lang="en", source="esco"))
+        sid = s.id
+    _esco_index.cache_clear()
+    return sid
 
 
 @pytest.fixture(autouse=True)
@@ -146,3 +164,45 @@ def test_translator_keeps_same_skill_from_distinct_source_types():
         capabilities = translate(profile)
 
     assert len(capabilities) == 2
+
+
+def test_translator_links_esco_term_to_skill_id():
+    """The LLM-supplied esco_term resolves to a stored ESCO skill_id."""
+    py_id = _seed_esco_python()
+    profile = _student_profile()
+    payload = {
+        "translated_capabilities": [
+            {
+                "skill": "programování v Pythonu",  # Czech display name, won't resolve
+                "evidence_quote": "Trained BERT on Czech tweets in Python.",
+                "confidence": 0.65,
+                "source_type": "school_project",
+                "relevance": "must_have",
+                "esco_term": "python",  # English ESCO term → resolves via alias
+            }
+        ]
+    }
+    with patch("cv_bau_students.llm.call_json", return_value=payload):
+        caps = translate(profile)
+    assert len(caps) == 1
+    assert caps[0].esco_term == "python"
+    assert caps[0].skill_id == py_id
+
+
+def test_translator_skill_id_none_when_unresolvable():
+    profile = _student_profile()
+    payload = {
+        "translated_capabilities": [
+            {
+                "skill": "underwater basket weaving",
+                "evidence_quote": "hobby",
+                "confidence": 0.6,
+                "source_type": "hobby",
+                "relevance": "nice_to_have",
+                "esco_term": "underwater basket weaving",
+            }
+        ]
+    }
+    with patch("cv_bau_students.llm.call_json", return_value=payload):
+        caps = translate(profile)
+    assert caps[0].skill_id is None

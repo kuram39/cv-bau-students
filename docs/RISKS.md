@@ -51,6 +51,8 @@ needs ground-truth data.
 | 17 | Skepticism was prompt-only with positive examples only | Yes — free quality win | ✅ Added 6 reject-examples to `translate_capabilities.md` covering title inflation, multi-domain hallucination, personality-as-capability, hobby promotion, peak metric without scope, brigada misalignment |
 | 18 | Confidence band calibration | No — needs eval set with ground truth | Deferred |
 | 19 | Bridge-months guesstimates | No — 8 hand-curated domains are defensible | Deferred until ESCO load |
+| 20 | Two skill namespaces (hand-seed vs ESCO) | Yes — broke target-role enrichment | ✅ `resolve_skill_esco` (taxonomy/repo) resolves candidate skills into the ESCO namespace; translate emits an English `esco_term` per capability → stored ESCO `skill_id`. Enrichment now intersects the occupation's essential∪optional set. must/nice/bridge stay seed-space (works); full namespace unification (move job_ad_skills + level_checklists onto ESCO ids) deferred — needs a loader rewrite + seed rebuild |
+| 21 | Skill resolution drop (~half of free-text phrases) | Partial | 🟡 Layer-1 = diacritics-strip + ESCO aliases + rapidfuzz (token_sort ≥92); LLM `esco_term` handles cross-lingual/paraphrase (`datové modelování`→`data modelling`). Residual misses: vendor tools absent from ESCO (`Power BI`, `Tableau`), and phrases neither lexically nor LLM-mapped. Next: Czech lemmatisation (`simplemma`), embedding retrieval in the seed (Phase C), full NSP pull for Czech aliases (Phase D) |
 
 ## Recommended interview-answer order
 
