@@ -1,0 +1,41 @@
+Tereza Dvořáková
+
+E-mail: tereza.dvorakova@seznam.cz
+Telefon: +420 731 446 920
+Lokalita: Praha 8
+
+PROFESNÍ SHRNUTÍ
+Čerstvá absolventka bakalářského studia informatiky s praktickou
+zkušeností s reportingem a tvorbou Excel maker pro rodinnou firmu.
+Hledám juniorní pozici v oblasti datové analýzy, kde mohu rozvinout
+své technické základy a praktický cit pro práci s daty.
+
+VZDĚLÁNÍ
+Masarykova univerzita, Brno — Fakulta informatiky
+Informatika (bakalářské studium), 2022 – 2025, dokončeno.
+Erasmus+ semestr: Technische Universität Wien, Rakousko (zimní semestr
+2024) — kurzy datových struktur a databází, mezikulturní zkušenost.
+
+PRACOVNÍ ZKUŠENOSTI / BRIGÁDY
+Rodinná firma (velkoobchod s textilem) — freelance výpomoc
+2021 – dosud (nepravidelně, při studiu)
+Tvorba Excel maker (VBA) pro fakturaci a skladovou evidenci, jednoduché
+měsíční reporty obratu. Samostatná komunikace s dodavateli.
+
+PROJEKTY
+- Automatizace fakturace v Excelu (VBA makra) — zkrácení měsíční
+  uzávěrky z půl dne na cca hodinu.
+- Samostudijní projekt: vizualizace prodejních dat rodinné firmy
+  v nástroji Tableau (samouk).
+
+HARD SKILLS
+Excel (pokročilý, VBA makra), základy SQL, Tableau (samouk), základy
+Pythonu, MS Office.
+
+SOFT SKILLS
+Samostatnost, adaptabilita, komunikace se zákazníkem, pečlivost.
+
+JAZYKY
+Čeština — rodný jazyk (C2)
+Angličtina — středně pokročilá (B2)
+Němčina — středně pokročilá (B1)

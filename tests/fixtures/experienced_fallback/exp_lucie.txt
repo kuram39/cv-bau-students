@@ -1,0 +1,45 @@
+Lucie Procházková
+
+E-mail: lucie.prochazkova@email.cz
+Telefon: +420 608 552 134
+Lokalita: Praha 2
+
+PROFESNÍ SHRNUTÍ
+Business / data analytička se sedmi lety praxe na pomezí obchodu a dat.
+Propojuji obchodní zadání s datovými výstupy, vedu menší analytický tým
+a zodpovídám za reporting pro vedení. Hledám roli, kde mohu rozvíjet
+datovou strategii firmy.
+
+VZDĚLÁNÍ
+Masarykova univerzita, Brno — Ekonomicko-správní fakulta
+Podniková informatika (magisterské studium), 2013 – 2016, dokončeno.
+
+PRACOVNÍ ZKUŠENOSTI
+Rohlik.cz, Praha — Lead Data Analyst
+2020 – dosud (4 roky)
+Vedení tříčlenného analytického týmu, vlastnictví reportingu pro vedení,
+definice firemních KPI. Návrh datového modelu pro sledování doručování
+a spokojenosti zákazníků. Prezentace výsledků na úrovni C-level.
+
+Mall.cz, Praha — Data Analyst
+2016 – 2020 (4 roky)
+Analýza prodejů a marketingových kampaní, segmentace zákazníků,
+reporting v SQL a Tableau. Podpora obchodního týmu při cenotvorbě.
+
+PROJEKTY
+- Zavedení jednotné metriky doručovací výkonnosti napříč firmou.
+- Migrace reportingu do Tableau s rolí-based přístupy pro jednotlivá
+  oddělení.
+
+HARD SKILLS
+SQL (expert), Tableau, Power BI, Python (základy), Excel (expert),
+datové modelování, definice KPI, A/B testování.
+
+SOFT SKILLS
+Vedení týmu, stakeholder management, strategické myšlení, prezentace
+na úrovni vedení, vyjednávání.
+
+JAZYKY
+Čeština — rodný jazyk (C2)
+Angličtina — pokročilá (C1)
+Slovenština — pokročilá (C1)

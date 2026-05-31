@@ -53,3 +53,17 @@ its respective sources, as listed below.
   text is committed. The normalised JSON at `data/raw_ads/normalised.json`
   is committed and contains only required-fields schema (title, level,
   domain, location, must-have / nice-to-have skill arrays).
+
+## Demo CV samples
+
+- **Student CVs** (`data/raw_cv_samples/students/*.txt`): synthetic,
+  hand-authored Czech personas. No real person; safe to commit. Can be
+  regenerated with variety via `scripts/generate_student_cvs.py` (LLM).
+- **Experienced CVs** (`data/raw_cv_samples/experienced/*.txt`):
+  synthetic, hand-authored Czech data-analyst profiles. No real person.
+- **Optional real-data alternative:** `scripts/fetch_hf_resume_samples.py`
+  pulls anonymised resumes from the HuggingFace dataset
+  [InferencePrince555/Resume-Dataset](https://huggingface.co/datasets/InferencePrince555/Resume-Dataset)
+  (Apache 2.0). Not used for the committed demo set, but available when
+  real external CV text is preferred. If used, the Apache 2.0 license
+  and dataset attribution apply.

@@ -1,0 +1,40 @@
+Petr Málek
+
+E-mail: petr.malek@email.cz
+Telefon: +420 724 330 691
+Lokalita: Praha 9
+
+PROFESNÍ SHRNUTÍ
+Datový analytik se třemi lety praxe ve finančním sektoru. Zaměřuji se na
+SQL reporting, datovou kvalitu a automatizaci opakovaných výstupů. Mám
+zkušenost s prací v regulovaném prostředí a spoluprací s riskovými týmy.
+
+VZDĚLÁNÍ
+České vysoké učení technické v Praze — Fakulta jaderná a fyzikálně
+inženýrská
+Aplikovaná matematika (magisterské studium), 2017 – 2020, dokončeno.
+
+PRACOVNÍ ZKUŠENOSTI
+Česká spořitelna, a.s., Praha — Data Analyst
+2021 – dosud (3 roky)
+Příprava reportů pro riskové a obchodní oddělení v SQL, validace datové
+kvality, automatizace měsíčních regulatorních výstupů. Vytvořil jsem
+sadu kontrol datové kvality, která odhalila chyby ve zdrojových datech
+ještě před reportingem.
+
+PROJEKTY
+- Automatizace regulatorního reportingu: nahrazení manuálního
+  zpracování v Excelu Python skriptem napojeným na databázi.
+- Dashboard sledování úvěrového portfolia v Power BI.
+
+HARD SKILLS
+SQL (pokročilý), Python (pandas), Power BI, Excel (pokročilý), datová
+kvalita, automatizace reportingu, základy ETL.
+
+SOFT SKILLS
+Pečlivost, analytické myšlení, komunikace, spolehlivost, dodržování
+termínů.
+
+JAZYKY
+Čeština — rodný jazyk (C2)
+Angličtina — pokročilá (B2)

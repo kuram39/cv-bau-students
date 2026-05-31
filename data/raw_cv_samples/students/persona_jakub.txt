@@ -1,0 +1,43 @@
+Jakub Svoboda
+
+E-mail: jakub.svoboda23@gmail.com
+Telefon: +420 605 887 102
+Lokalita: Brno (ochoten relokace / dojíždění do Prahy)
+
+PROFESNÍ SHRNUTÍ
+Student magisterského oboru Datové inženýrství na VUT FIT s půlroční
+stáží v analytickém týmu banky. Mám praktickou zkušenost s SQL, Power BI
+a reportingem a hledám juniorní až medior datařskou pozici, kde mohu
+růst směrem k samostatnému vlastnictví analytických výstupů.
+
+VZDĚLÁNÍ
+Vysoké učení technické v Brně — Fakulta informačních technologií
+Datové inženýrství (magisterské studium), 2024 – dosud (předpokládané
+dokončení 2026).
+Bakalářské studium Informatiky, VUT FIT, 2021 – 2024, dokončeno.
+
+PRACOVNÍ ZKUŠENOSTI
+Komerční banka, a.s., Praha — stáž v analytickém týmu
+únor 2024 – červenec 2024 (6 měsíců)
+Příprava reportů v SQL, čištění a validace dat, podpora seniorních
+analytiků při tvorbě měsíčních přehledů. Automatizoval jsem dva
+opakované reporty, čímž jsem ušetřil přibližně 4 hodiny práce týdně.
+
+PROJEKTY
+- Semestrální projekt: BI dashboard v Power BI pro studentský parlament
+  VUT — vizualizace rozpočtu a čerpání, čtyřčlenný tým, působil jsem
+  jako vedoucí týmu a prezentoval výstup vedení parlamentu.
+- Osobní projekt: ETL pipeline v Pythonu pro stahování a transformaci
+  veřejných dat o počasí, ukládání do PostgreSQL.
+
+HARD SKILLS
+SQL (pokročilý), Power BI, Python, Git, základy ETL, PostgreSQL,
+datové modelování.
+
+SOFT SKILLS
+Vedení týmu, prezentační dovednosti, analytické myšlení, samostatnost.
+
+JAZYKY
+Čeština — rodný jazyk (C2)
+Angličtina — pokročilá (C1)
+Němčina — začátečník (A2)

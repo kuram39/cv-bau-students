@@ -1,0 +1,44 @@
+Anna Nováková
+
+E-mail: anna.novakova@email.cz
+Telefon: +420 776 214 553
+Lokalita: Praha 4
+
+PROFESNÍ SHRNUTÍ
+Studentka třetího ročníku Aplikované informatiky na VŠE Praha se zájmem
+o datovou analýzu. Mám zkušenost s Pythonem a statistikou z bakalářské
+práce a hledám juniorní pozici, kde mohu uplatnit analytické dovednosti
+a dále se učit v praxi.
+
+VZDĚLÁNÍ
+Vysoká škola ekonomická v Praze — Fakulta informatiky a statistiky
+Aplikovaná informatika (bakalářské studium), 2023 – dosud (předpokládané
+dokončení 2026), studijní průměr 1,4.
+Bakalářská práce (rozpracovaná): Regresní analýza nákupního chování
+zákazníků v e-shopu — predikce hodnoty objednávky pomocí Pythonu
+(pandas, scikit-learn).
+
+PRACOVNÍ ZKUŠENOSTI / BRIGÁDY
+McDonald's, Praha — pokladní / obsluha (brigáda)
+2022 – 2024 (2 roky, při studiu)
+Obsluha pokladny, práce pod časovým tlakem o víkendech, koordinace
+v týmu během špiček. Naučila jsem se spolehlivosti a komunikaci se
+zákazníky.
+
+PROJEKTY
+- Bakalářská práce: regresní model nákupního chování (Python, pandas,
+  scikit-learn, matplotlib). Sběr a čištění dat, explorativní analýza,
+  trénink a vyhodnocení modelu.
+- Semestrální projekt: dashboard prodejů v Excelu s kontingenčními
+  tabulkami a grafy pro fiktivní e-shop.
+
+HARD SKILLS
+Python (pandas, numpy), základy SQL, Excel (kontingenční tabulky, grafy),
+základy statistiky a regrese, Git (základy).
+
+SOFT SKILLS
+Komunikace, spolehlivost, týmová spolupráce, práce pod tlakem.
+
+JAZYKY
+Čeština — rodný jazyk (C2)
+Angličtina — středně pokročilá (B2)

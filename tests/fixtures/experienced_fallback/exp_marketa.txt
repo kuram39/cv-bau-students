@@ -1,0 +1,45 @@
+Markéta Horáková
+
+E-mail: marketa.horakova@email.cz
+Telefon: +420 602 145 778
+Lokalita: Praha 5
+
+PROFESNÍ SHRNUTÍ
+Datová analytička s pěti lety praxe v e-commerce a retailu. Specializuji
+se na reporting, vizualizaci dat a podporu obchodních rozhodnutí. Vedu
+přípravu pravidelných manažerských přehledů a spolupracuji s týmy
+napříč firmou na definici metrik.
+
+VZDĚLÁNÍ
+Vysoká škola ekonomická v Praze — Fakulta informatiky a statistiky
+Statistika a ekonometrie (magisterské studium), 2015 – 2018, dokončeno.
+
+PRACOVNÍ ZKUŠENOSTI
+Alza.cz, Praha — Senior Data Analyst
+2021 – dosud (3 roky)
+Vlastnictví reportingu pro obchodní oddělení, návrh a údržba dashboardů
+v Power BI, ad-hoc analýzy pro management. Vedu juniorní analytičku,
+nastavil jsem proces týdenních KPI přehledů pro 6 produktových týmů.
+
+Notino, Praha — Data Analyst
+2018 – 2021 (3 roky)
+Analýza nákupního chování, segmentace zákazníků, A/B testy kampaní.
+Příprava datových podkladů pro marketingové rozhodování v SQL a Pythonu.
+
+PROJEKTY
+- Redesign reportingové vrstvy: migrace z Excelu do Power BI s
+  automatickým denním refreshem (úspora ~10 hodin práce týdně napříč
+  týmem).
+- Model predikce odlivu zákazníků (churn) v Pythonu (scikit-learn).
+
+HARD SKILLS
+SQL (expert), Power BI, Python (pandas, scikit-learn), Excel (pokročilý),
+datové modelování, ETL, základy Tableau, Git.
+
+SOFT SKILLS
+Stakeholder management, vedení týmu, prezentační dovednosti,
+analytické myšlení, komunikace s netechnickým publikem.
+
+JAZYKY
+Čeština — rodný jazyk (C2)
+Angličtina — pokročilá (C1)
