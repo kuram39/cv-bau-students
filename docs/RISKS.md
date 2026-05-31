@@ -77,5 +77,54 @@ needs ground-truth data.
   don't share exact taxonomy ids — already a slot in the schema,
   not implemented in the prototype.
 
+## LLM cost at scale (Phase 12 two-pass journey)
+
+> **"4+ LLM volání na uchazeče — není to drahé proti 'levnému řešení'?"**
+
+Honest measurement of one *interested*-candidate journey ≈ **8 LLM
+calls**:
+
+| Stage | Calls | Detail |
+|---|---|---|
+| `run_generic_pass` | 5 | `extract_profile` (1) + `translate` (1) + `reason_for_ranking` over top-3 ads (3) |
+| `express_interest` | 1 | `prefill_answers` (1). Role-question template is generated **once per ad**, amortised to ~0 per applicant. |
+| `submit_role_specific` | 2 | `translate` again (1) + `reason_for_ranking` on the chosen ad (1) |
+
+**Why it's acceptable today.** Quality-first per the owner's explicit
+priority ("klidne za cenu toho, ze procesovani bude trvat o neco dele …
+ale chci … verifikovane data vystupy"). The demo runs a fixed
+~6-candidate seed (one-time ≈ $2). Two caches already cut repeats:
+- `reasoning_cache` table dedups by `(candidate_id, ad_id, prompt_hash)`
+  — re-opening the same candidate costs nothing.
+- `translate` has an `lru_cache` keyed on profile content.
+
+**Cheap-win optimisation — documented, deferred to a branch.** Two
+changes halve the cost to **~4 calls with no quality loss**:
+
+1. **Defer reasoning.** `run_generic_pass` reasons all 3 preview ads
+   *before* the user picks one — 2 of 3 are wasted. Move full AI
+   reasoning to the ad the user expresses interest in
+   (`submit_role_specific` already reasons exactly that one). Preview
+   cards show a cheap deterministic "proč ti sedne" line (skill-overlap
+   count + bridge summary — pure Python). **Saves up to 3 calls.**
+2. **Reuse translate.** The second `translate()` in
+   `submit_role_specific` is redundant: the elevator pitch feeds only
+   the personal-fit axis, and `_personal_fit(profile, ad)` is pure
+   Python reading `profile.summary` directly. Fold the pitch into the
+   summary and re-score without re-translating. **Saves 1 call.**
+
+Net: **8 → 4** (extract, translate, prefill, reason) — the four being
+the irreducible core of the value proposition.
+
+**Scale path beyond that.** A fully deterministic *fast-match* mode
+(0 LLM: taxonomy overlap + bridge only) for bulk pre-ranking, with the
+LLM reserved for the recruiter-facing shortlist. Future option, not
+built.
+
+The optimisation itself is intentionally **not** applied here — it
+lands on a `perf/llm-cost` branch as the first PR through the new CI
+gate (see `CONTRIBUTING.md`), keeping the quality-tuned path on `main`
+until measured.
+
 This document is the answer key for the round-2 interview — not the
 roadmap. The roadmap is whatever real users break first.
