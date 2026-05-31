@@ -92,10 +92,11 @@ def _generate_cv(brief: str) -> str:
     """One LLM call → CV text. Uses the raw text endpoint, not JSON."""
     prompt = _PROMPT.replace("{brief}", brief)
     # The generator wants prose, not JSON — call the messages API directly.
+    # Opus 4.8 removed `temperature`; variety across personas comes from their
+    # distinct briefs, not a sampling knob.
     msg = llm._client().messages.create(
         model=llm.LLM_MODEL,
         max_tokens=1500,
-        temperature=0.7,  # a little variety across personas
         messages=[{"role": "user", "content": prompt}],
     )
     return "".join(b.text for b in msg.content if getattr(b, "type", None) == "text").strip()
