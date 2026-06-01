@@ -145,9 +145,21 @@ def _render_target_skill_picker(ad: JobAd) -> None:
             n for i in current.get("optional", set()) if (n := id_to_name.get(i)) in opt_set
         ]
 
-        chosen_core = st.multiselect("Core dovednosti", core_opts, default=core_default)
-        chosen_opt = st.multiselect("Optional dovednosti", opt_opts, default=opt_default)
-        if st.button("💾 Uložit cílové dovednosti", key=f"save_target_{ad.id}"):
+        # st.form batches the multiselects: editing them does NOT rerun the app
+        # (no candidate re-render / recompute). Scoring runs ONLY on submit.
+        with st.form(key=f"target_skills_form_{ad.id}"):
+            chosen_core = st.multiselect("Core dovednosti", core_opts, default=core_default)
+            chosen_opt = st.multiselect("Optional dovednosti", opt_opts, default=opt_default)
+            submitted = st.form_submit_button(
+                "💾 Uložit cílové dovednosti",
+                type="primary",
+                help=(
+                    "Uložením se přepočítají skóre VŠECH uchazečů — každé CV se "
+                    "znovu vyhodnotí (rekvalifikuje) proti tomuto výběru cílových "
+                    "dovedností. Dokud neuložíš, změny výběru výše se neprojeví."
+                ),
+            )
+        if submitted:
             jobads_repo.set_target_skills(
                 ad.id,
                 core=[name_to_id[n] for n in chosen_core if n in name_to_id],
