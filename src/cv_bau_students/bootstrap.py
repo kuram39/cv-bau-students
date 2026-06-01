@@ -213,7 +213,17 @@ def _overlay_legacy_esco_csv() -> None:
 
 
 def _overlay_job_ads() -> None:
+    """Ingest the scraped ad corpus from SCRAPED_ADS_DIR — ONLY when job_ads is
+    empty. The (scoped) seed snapshot already ships the demo target ad, so on a
+    seed restore this is a no-op; re-ingesting would wipe the prepared target ad
+    (ApexFinance text + ISCO + curated skills) and re-add ~481 unused rows the
+    single-target app never shows. The full-corpus load stays the from-scratch
+    path (empty DB, no snapshot)."""
     try:
+        with get_session() as session:
+            if session.execute(select(JobAdRow.id).limit(1)).first() is not None:
+                log.info("job_ads already populated — skipping scraped-ad overlay.")
+                return
         if SCRAPED_ADS_DIR.exists() and any(SCRAPED_ADS_DIR.glob("*.json")):
             from scripts.normalise_scraped_ads import _truncate_job_ads
             from scripts.normalise_scraped_ads import main as normalise_main
