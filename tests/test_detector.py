@@ -153,9 +153,9 @@ def test_classify_relative_to_target_ad_career_changer():
     assert result.verdict == "career_changer"
 
 
-def test_only_brigada_history_not_career_changer():
-    """All-brigáda history (≥2y) has no comparable career field → experienced,
-    NOT career_changer (brigády are excluded from the type signal)."""
+def test_only_brigada_history_is_student_not_changer_or_experienced():
+    """All-brigáda history has no real career experience → student/potential,
+    NOT career_changer and NOT experienced."""
     profile = _experienced_profile(
         target_domains=[],
         total_work_years=3.0,
@@ -166,8 +166,23 @@ def test_only_brigada_history_not_career_changer():
         ],
     )
     result = classify(profile, target_ad=_data_analyst_ad(), today=TODAY)
-    assert result.verdict == "experienced"
+    assert result.verdict == "student"
     assert any("only brigáda" in r for r in result.reasons)
+
+
+def test_low_experience_non_student_is_student_not_experienced():
+    """No real work + not studying + not fresh grad (old grad, gap) must NOT
+    fall to 'experienced' — too little experience → student/potential."""
+    profile = _experienced_profile(
+        candidate_type="experienced",
+        target_domains=[],
+        total_work_years=0.0,
+        most_recent_grad_year=2017,  # long ago → not fresh grad
+        studying_in_progress=False,
+        work_experience=[],
+    )
+    result = classify(profile, target_ad=_data_analyst_ad(), today=TODAY)
+    assert result.verdict == "student"
 
 
 def test_classify_relative_to_target_ad_experienced_in_field():

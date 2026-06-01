@@ -128,23 +128,27 @@ def _classify_changer_vs_experienced(
     history → experienced. Without an ad: legacy self-stated target_domains
     comparison (vague aspiration alone is not evidence of a change).
     """
+    # Too little REAL work → early-career "student / potential" bucket, NOT
+    # experienced. A non-studying, non-fresh-grad person with <2y work (career
+    # gap, re-entry, late starter) has no tenure to stand on → judged on
+    # potential, like a student. "experienced" is reserved for ≥2y real work.
     if profile.total_work_years < STUDENT_MAX_WORK_YEARS:
         reasons.append(
-            f"too little work history ({profile.total_work_years} yrs)"
-            " but no student signal — defaulting to experienced"
+            f"work_years ({profile.total_work_years}) < {STUDENT_MAX_WORK_YEARS}"
+            " — too little experience → student/potential"
         )
-        return "experienced"
+        return "student"
 
     if not profile.work_experience:
-        reasons.append("no work history to compare against — defaulting to experienced")
-        return "experienced"
+        reasons.append("no work history — student/potential")
+        return "student"
 
-    # Brigády are excluded from the candidate-type signal (cross-domain by
-    # definition). With ONLY brigáda history there's no comparable career field
-    # to judge a switch against → default experienced, not career_changer.
+    # Brigády are excluded from the career signal (cross-domain by definition).
+    # ONLY brigáda history = no real career experience → student/potential, not
+    # experienced and not career_changer.
     if not any(not w.is_brigada for w in profile.work_experience):
-        reasons.append("only brigáda work — no comparable career field — defaulting to experienced")
-        return "experienced"
+        reasons.append("only brigáda work — no real career experience → student/potential")
+        return "student"
 
     # Preferred path: classify relative to the actual target ad's field.
     if target_ad is not None:
