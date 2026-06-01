@@ -79,6 +79,36 @@ def _row_filter(table_name: str, *, ad_id: int, occ_uris: list[str], domain: str
     return filters.get(table_name)
 
 
+def _dedup_history(table_name: str, rows: list[dict]) -> list[dict]:
+    """Collapse rerun cruft so the bundled seed is a CLEAN demo.
+
+    Re-running seed_target_demo on a non-empty DB APPENDS history: a new
+    `profile_versions` round per candidate + extra `reasoning_cache` rows. Left
+    as-is, `meta/reflect` reads `len(profile_versions) - 1` as phantom completion
+    rounds. Keep only the latest profile version per candidate (renumbered to
+    round 0) and the latest reasoning_cache per (candidate, ad)."""
+    if table_name == "profile_versions":
+        latest: dict[int, dict] = {}
+        for r in rows:
+            cid = r["candidate_id"]
+            if cid not in latest or r.get("round", 0) > latest[cid].get("round", 0):
+                latest[cid] = r
+        out = []
+        for r in latest.values():
+            r = dict(r)
+            r["round"] = 0  # single canonical version in the seed
+            out.append(r)
+        return out
+    if table_name == "reasoning_cache":
+        latest: dict[tuple, dict] = {}
+        for r in rows:
+            key = (r.get("candidate_id"), r.get("ad_id"))
+            if key not in latest or (r.get("id") or 0) > (latest[key].get("id") or 0):
+                latest[key] = r
+        return list(latest.values())
+    return rows
+
+
 def build_scoped(
     source_url: str,
     out_path: Path,
@@ -114,6 +144,7 @@ def build_scoped(
                 )
                 stmt = stmt.params(**params)
             rows = [dict(r._mapping) for r in s.execute(stmt)]
+            rows = _dedup_history(table.name, rows)
             if rows:
                 d.execute(insert(table), rows)
             counts[table.name] = len(rows)

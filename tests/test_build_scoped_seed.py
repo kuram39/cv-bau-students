@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from scripts.build_scoped_seed import build_scoped
+from scripts.build_scoped_seed import _dedup_history, build_scoped
 from sqlalchemy import create_engine, func, insert, select
 
 from cv_bau_students.db_models import (
@@ -182,3 +182,34 @@ def test_scoped_keeps_data_role_family_plus_demo_skills(tmp_path):
     assert _count(out_url, TranslatedCapabilityRow) == 1
     # industry-map scoped to the kept occupation only.
     assert _count(out_url, SkillIndustryMap) == 2
+
+
+def test_dedup_history_collapses_rerun_cruft():
+    # A reseed-on-dirty-DB appends a round-1 per candidate + extra cache rows.
+    pv = [
+        {"id": 1, "candidate_id": 1, "round": 0, "payload": "old"},
+        {"id": 7, "candidate_id": 1, "round": 1, "payload": "new"},  # rerun append
+        {"id": 2, "candidate_id": 2, "round": 0, "payload": "c2"},
+    ]
+    out = _dedup_history("profile_versions", pv)
+    # One canonical version per candidate, latest payload, renumbered to round 0.
+    assert {r["candidate_id"] for r in out} == {1, 2}
+    assert all(r["round"] == 0 for r in out)
+    by_cid = {r["candidate_id"]: r for r in out}
+    assert by_cid[1]["payload"] == "new"
+
+    rc = [
+        {"id": 1, "candidate_id": 1, "ad_id": 341, "rationale": "old"},
+        {"id": 9, "candidate_id": 1, "ad_id": 341, "rationale": "new"},  # rerun append
+        {"id": 3, "candidate_id": 1, "ad_id": 99, "rationale": "other-ad"},
+    ]
+    out = _dedup_history("reasoning_cache", rc)
+    # Latest per (candidate, ad); the (1,341) duplicate collapses to the max id.
+    assert len(out) == 2
+    keyed = {(r["candidate_id"], r["ad_id"]): r for r in out}
+    assert keyed[(1, 341)]["rationale"] == "new"
+    assert keyed[(1, 99)]["rationale"] == "other-ad"
+
+    # Unknown tables pass through untouched.
+    other = [{"id": 1}, {"id": 2}]
+    assert _dedup_history("skills", other) is other
