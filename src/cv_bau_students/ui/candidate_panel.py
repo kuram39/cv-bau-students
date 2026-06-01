@@ -112,11 +112,28 @@ def _format_missing(result: GenericResult) -> str:
     return "některé povinné položky"
 
 
+def _render_position_detail(ad, *, expanded: bool = False) -> None:
+    """Job-description detail for the candidate (mirrors the recruiter view) so
+    they know what the role wants — shown at the match step and while answering
+    the role questions, to ground their answers."""
+    with st.expander("📋 Detail pozice (co se hledá)", expanded=expanded):
+        st.markdown(f"**{ad.title}** — {ad.employer or '—'} · {ad.location} · {ad.level}")
+        st.markdown(f"**Klíčové dovednosti:** {', '.join(ad.must_have) or '—'}")
+        st.markdown(f"**Výhodou:** {', '.join(ad.nice_to_have) or '—'}")
+        langs = ", ".join(f"{lr.language} ({lr.min_level})" for lr in ad.languages_required)
+        if langs:
+            st.markdown(f"**Jazyky:** {langs}")
+        if ad.raw_text:
+            st.markdown("**Popis:**")
+            st.write(ad.raw_text)
+
+
 def _step_matches() -> None:
     result = GenericResult.model_validate(st.session_state["generic_result"])
     ad = _target_ad()
     st.markdown(f"### ✅ Profil zpracován — {TYPE_BADGE.get(result.profile.candidate_type, '')}")
     st.caption("Tvůj profil porovnáváme s touto otevřenou pozicí:")
+    _render_position_detail(ad, expanded=True)
 
     # Preview line for the target ad: reuse its match if the generic pass
     # surfaced it; otherwise show a neutral line (the recruiter view re-scores).
@@ -195,6 +212,7 @@ def _go_interested(candidate_id: int, ad_id: int) -> None:
 def _step_role_form() -> None:
     interest = InterestResult.model_validate(st.session_state["interest_result"])
     st.markdown("### 📝 Pár otázek k pozici")
+    _render_position_detail(_target_ad())
     st.caption(
         "Tyto doplňující otázky pomáhají odhalit dovednosti, které z CV nemusí "
         "být patrné. Odpověz vlastními slovy, **stručně — max "
