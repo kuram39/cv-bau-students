@@ -153,6 +153,23 @@ def test_classify_relative_to_target_ad_career_changer():
     assert result.verdict == "career_changer"
 
 
+def test_only_brigada_history_not_career_changer():
+    """All-brigáda history (≥2y) has no comparable career field → experienced,
+    NOT career_changer (brigády are excluded from the type signal)."""
+    profile = _experienced_profile(
+        target_domains=[],
+        total_work_years=3.0,
+        work_experience=[
+            WorkExperienceItem(
+                employer="McDonald's", role="Obsluha", domain="fast food", is_brigada=True
+            ),
+        ],
+    )
+    result = classify(profile, target_ad=_data_analyst_ad(), today=TODAY)
+    assert result.verdict == "experienced"
+    assert any("only brigáda" in r for r in result.reasons)
+
+
 def test_classify_relative_to_target_ad_experienced_in_field():
     """Work history aligned with the ad's field → experienced (no target_domains
     needed; 'Analytik' aligns with 'Datový analytik')."""

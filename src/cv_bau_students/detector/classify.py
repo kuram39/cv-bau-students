@@ -139,6 +139,13 @@ def _classify_changer_vs_experienced(
         reasons.append("no work history to compare against — defaulting to experienced")
         return "experienced"
 
+    # Brigády are excluded from the candidate-type signal (cross-domain by
+    # definition). With ONLY brigáda history there's no comparable career field
+    # to judge a switch against → default experienced, not career_changer.
+    if not any(not w.is_brigada for w in profile.work_experience):
+        reasons.append("only brigáda work — no comparable career field — defaulting to experienced")
+        return "experienced"
+
     # Preferred path: classify relative to the actual target ad's field.
     if target_ad is not None:
         aligned = _aligns_with_target_ad(profile, target_ad)
