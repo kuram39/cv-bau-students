@@ -56,11 +56,49 @@ DEMO_MUST_HAVE = ["SQL", "Python", "Power BI", "Excel"]
 DEMO_NICE_TO_HAVE = ["Tableau", "statistics"]
 DEMO_LANGUAGES = [LanguageRequirement(language="Czech", min_level="C1")]
 
-# Prepended sentence that re-frames the scraped opening as our own firm's
-# ad without copying the original employer's exact pitch.
-DEMO_INTRO = (
-    f"Společnost {DEMO_EMPLOYER} hledá datového analytika / datovou "
-    f"analytičku do interního týmu Business Intelligence. "
+# Full, realistic target-ad text for the demo — composed from the real scraped
+# data-analyst ads (jobs.cz), re-employer'd to our fictional firm. The original
+# scraped "Datový analytik" row was a 299-char stub; this gives the recruiter +
+# the reasoning LLM a complete BI/finance job description aligned to the demo's
+# must/nice (SQL, Python, Power BI, Excel · Tableau, statistika).
+DEMO_RAW_TEXT = (
+    f"Společnost {DEMO_EMPLOYER} hledá datového analytika / datovou analytičku "
+    "do interního týmu Business Intelligence. Jsme finanční skupina a data jsou "
+    "jádrem našeho rozhodování — od každodenní operativy až po strategické kroky "
+    "vedení. Hledáme člověka, který má rád práci s daty, rozumí informačním "
+    "potřebám byznysu a nebojí se „zašpinit si ruce“ jejich realizací.\n\n"
+    "Co u nás budeš dělat:\n"
+    "• Připravovat a vyhodnocovat data z interních systémů — psát a optimalizovat "
+    "SQL dotazy, čistit a transformovat data do podoby vhodné pro analýzu.\n"
+    "• Navrhovat datové modely a stavět reporting v Power BI (sémantický model, "
+    "DAX, Power Query) i ad-hoc analýzy v Excelu; část dashboardů udržujeme v "
+    "Tableau.\n"
+    "• Provádět statistické analýzy a prediktivní výpočty v Pythonu "
+    "(pandas, NumPy) a interpretovat výsledky pro netechnické publikum.\n"
+    "• Vést workshopy s business uživateli, odhalovat jejich informační potřeby a "
+    "spolu s nimi definovat klíčové metriky a KPI.\n"
+    "• Prezentovat zjištění na úrovni vedení a podporovat self-service BI napříč "
+    "odděleními.\n"
+    "• Dokumentovat datové toky, transformace a navržená řešení.\n\n"
+    "Koho hledáme:\n"
+    "• Solidní znalost SQL (dotazování, joiny, agregace) a praktickou zkušenost s "
+    "reportingem v Power BI.\n"
+    "• Schopnost pracovat s daty v Pythonu (pandas/NumPy) a provádět i "
+    "interpretovat statistické analýzy.\n"
+    "• Pokročilý Excel (kontingenční tabulky, vzorce) a cit pro datovou "
+    "vizualizaci.\n"
+    "• Porozumění datovému modelování a chuť rozumět byznysu za daty.\n"
+    "• Komunikativnost, pečlivost a schopnost vysvětlit složitá data srozumitelně.\n"
+    "• Čeština na úrovni C1; angličtinu využiješ při čtení dokumentace.\n\n"
+    "Výhodou:\n"
+    "• Zkušenost s Tableau, se statistikou/strojovým učením, s časovými řadami.\n"
+    "• Práce s velkými daty, cloudovými platformami (Snowflake, Databricks) a "
+    "verzováním (Git).\n\n"
+    "Nabízíme:\n"
+    "• Roli v BI týmu finanční skupiny s reálným dopadem na rozhodování firmy.\n"
+    "• 25 dní dovolené, pružnou pracovní dobu, sick days.\n"
+    "• Roční příspěvek 12 000 Kč do cafeterie, příspěvek na stravování, podporu "
+    "vzdělávání a firemní akce.\n"
 )
 
 
@@ -69,11 +107,10 @@ def _modify_target_ad(ad) -> None:
     if ad.employer == DEMO_EMPLOYER:
         print(f"  target ad {ad.id} already prepared — skipping modify.")
         return
-    new_raw = DEMO_INTRO + (ad.raw_text or "")
     set_ad_fields_and_skills(
         ad.id,
         employer=DEMO_EMPLOYER,
-        raw_text=new_raw,
+        raw_text=DEMO_RAW_TEXT,
         must_have=DEMO_MUST_HAVE,
         nice_to_have=DEMO_NICE_TO_HAVE,
         languages_required=DEMO_LANGUAGES,

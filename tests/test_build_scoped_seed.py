@@ -8,7 +8,6 @@ capability skill) and drops out-of-scope rows, while copying candidate-side rows
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 
 _NOW = datetime(2026, 1, 1, 12, 0, 0)
 
