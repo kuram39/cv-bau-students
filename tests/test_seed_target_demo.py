@@ -136,5 +136,6 @@ def test_seed_is_idempotent(tmp_path, monkeypatch):
         # Still exactly 2 candidates / matches / 3 questions — no dupes.
         assert s.query(Match).filter_by(ad_id=ad.id).count() == 2
         assert s.query(RoleSpecificQuestion).filter_by(ad_id=ad.id).count() == 3
-        # Employer modification stayed idempotent (no double intro).
-        assert ad.raw_text.count(seed.DEMO_INTRO) == 1
+        # Employer modification stayed idempotent: raw_text is the full demo
+        # ad text, set once (not re-prepended on the second run).
+        assert ad.raw_text == seed.DEMO_RAW_TEXT

@@ -65,3 +65,23 @@ steps vs SQLite, because the seed-snapshot restore is SQLite-only:
   `email = ""` in `~/.streamlit/credentials.toml`.
 - Don't `rm data/cv_bau_students.sqlite` before a demo — the committed seed has 0 ads;
   the live DB holds the scraped corpus + target ad.
+
+## 3. Role-scoped seed (fast cold-start)
+The full ESCO/NSP taxonomy (~200k rows) is universal coverage. This is a
+**single-target demo** (one data-analyst ad), so a Postgres deploy that pulls
+all of it on every cold start is ~10s slow for no benefit. `build_scoped_seed`
+keeps only the **data-role family** (ESCO occupations: data analyst + data
+scientist + data engineer ≈ 102 skills) plus the demo's own skills/ad/candidates
+→ ~2k rows. Scoring is unaffected (it only ever uses the curated target set);
+the recruiter picker becomes ~100 focused skills instead of 520.
+
+Rebuild (after a full `seed_target_demo`):
+```bash
+python -m scripts.build_scoped_seed --out /tmp/scoped.sqlite            # filter
+CV_BAU_STUDENTS_DB_URL="sqlite:////tmp/scoped.sqlite" python -m scripts.build_cloud_seed   # → seed.sqlite.gz
+python -m scripts.migrate_sqlite_to_postgres --source sqlite:////tmp/scoped.sqlite \
+    --target "postgresql://…?sslmode=require" --truncate --confirm-destroy   # → Postgres
+```
+The occupation set lives in `DATA_ROLE_URIS` (scripts/build_scoped_seed.py) — add
+adjacent roles (e.g. database admin) there and rebuild. **Single-role scoped:**
+switching the target ad/role requires a rebuild (or restoring the full taxonomy).
