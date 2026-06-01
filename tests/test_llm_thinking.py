@@ -41,11 +41,15 @@ def test_default_call_has_no_thinking_kwarg():
     assert kwargs["max_tokens"] == LLM_MAX_TOKENS
 
 
-def test_think_true_ignored_when_disabled_by_default():
-    """LLM_THINK_ENABLED is False by default → think=True sends no thinking."""
+def test_think_true_ignored_when_master_switch_off():
+    """With LLM_THINK_ENABLED off, think=True sends no thinking (the env opt-out
+    CV_BAU_STUDENTS_THINK=0 path)."""
     msg = _fake_message(text='{"ok": true}')
     client = _patched_client(msg)
-    with patch.object(llm, "_client", return_value=client):
+    with (
+        patch.object(llm, "_client", return_value=client),
+        patch.object(llm, "LLM_THINK_ENABLED", False),
+    ):
         out = llm.call_json("prompt", think=True)
     assert out == {"ok": True}
     _, kwargs = client.messages.create.call_args
