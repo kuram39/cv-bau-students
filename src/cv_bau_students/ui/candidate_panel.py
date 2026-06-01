@@ -94,7 +94,9 @@ def _step_upload() -> None:
     if uploaded and st.button("🚀 Najít pozice", type="primary"):
         with st.spinner("Zpracovávám CV (~4 LLM volání, ~30 s)…"):
             try:
-                result = run_generic_pass(uploaded.getvalue(), uploaded.name)
+                result = run_generic_pass(
+                    uploaded.getvalue(), uploaded.name, target_ad=_target_ad()
+                )
             except Exception as exc:  # noqa: BLE001
                 st.error(f"Chyba pipeline: {exc}")
                 return

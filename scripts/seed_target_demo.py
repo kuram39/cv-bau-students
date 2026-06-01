@@ -121,7 +121,7 @@ def _modify_target_ad(ad) -> None:
     )
 
 
-def _process_cv(path: Path, ad_id: int) -> dict:
+def _process_cv(path: Path, ad) -> dict:
     """Walk one CV through the interested journey. Returns a summary.
 
     No AI-drafted answers: the AI value is the questions (generated once per
@@ -129,7 +129,7 @@ def _process_cv(path: Path, ad_id: int) -> dict:
     matching the live flow before a candidate types their answers.
     """
     file_bytes = path.read_bytes()
-    gen = run_generic_pass(file_bytes, path.name)
+    gen = run_generic_pass(file_bytes, path.name, target_ad=ad)
     if gen.status == "needs_completion":
         return {
             "file": path.name,
@@ -138,11 +138,11 @@ def _process_cv(path: Path, ad_id: int) -> dict:
             "note": "BAU-mandatory fields missing; skipped role-specific.",
         }
 
-    express_interest(gen.candidate_id, ad_id, "interested")  # ensures + caches the AI questions
+    express_interest(gen.candidate_id, ad.id, "interested")  # ensures + caches the AI questions
 
     result = submit_role_specific(
         gen.candidate_id,
-        ad_id,
+        ad.id,
         answers={},  # seed leaves the questionnaire blank (no AI-fabricated answers)
         prefilled_set=set(),
         edited_set=set(),
@@ -215,7 +215,7 @@ def run_seed(target_title: str = "Datový analytik") -> int:
     summaries = []
     for path in cv_paths:
         try:
-            summary = _process_cv(path, ad.id)
+            summary = _process_cv(path, ad)
         except Exception as exc:  # noqa: BLE001
             print(f"  FAILED {path.name}: {exc}", file=sys.stderr)
             continue
