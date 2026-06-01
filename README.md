@@ -1,210 +1,199 @@
 # cv-bau-students
 
-Student / fresh-graduate / career-changer matching pipeline. Extends a
-BAU recruiter platform that already handles experienced candidates;
-this repo provides the layer that handles CVs without years of work
-history — school projects, thesis work, brigády, courses, and prior-
-domain achievements get translated into "experienced-equivalent"
-capabilities so the matcher can compare them against job ads written
-for experienced candidates.
+Round-2 AI matching platform for **students / fresh-graduates / career-changers**.
+It translates CVs *without* years of work history — school projects, thesis work,
+brigády, courses, prior-domain achievements — into "experienced-equivalent"
+capabilities, then scores every candidate on **skill coverage of one target job
+ad** so a recruiter can compare a student and an experienced hire on the same,
+fair axis: skills, not tenure.
 
-Sister project: [`cv-estimator`](https://github.com/buhlez31/cv-estimator)
-(round-1 salary estimator). Shared infrastructure pattern (Pydantic
-contract, LLM wrapper, skepticism prompt, Streamlit scaffolding) but
-disjoint product scope.
+Hybrid code-fork of the round-1 [`cv-estimator`](https://github.com/buhlez31/cv-estimator)
+(shared infra pattern: Pydantic contract, LLM wrapper, skepticism prompt,
+Streamlit scaffolding; disjoint product scope).
 
 ## TL;DR
 
-- **Pipeline.** Document extract → LLM #1 profile extraction → Python
-  detector (student / changer / experienced) → iterative completion
-  loop (LLM #2, asks for missing data) → LLM #3 capability translator
-  (school project / thesis / brigáda → experienced-language capabilities)
-  → SQL-backed matcher (skill_fit + bridge_fit + personal_fit) → LLM
-  #4 reasoning per top match.
-- **Comparability stance.** Never compare years. Compare demonstrated
-  skills + bridgeable gaps to next level. Per-domain junior / medior /
-  senior checklists encode what's bridgeable in a short course versus
-  what can't be shortcut.
-- **Data layer.** SQLite from day one via SQLAlchemy — 12 relational
-  tables for candidates, taxonomy, level checklists, job ads, matches,
-  reasoning cache. CSV files are the human-edited source of truth,
-  loaded into the DB on startup. Postgres migration = change one DSN.
-- **Cost discipline.** Tables / Python for everything deterministic
-  (taxonomy, alias resolution, bridge math, hard filters, detector).
-  LLM only for unstructured-text passes (profile extraction, completion
-  questions, capability translation, reasoning, meta-reflection).
-- **Meta-reflection.** Privacy-filtered LLM pass over batches of runs
-  writes pipeline-improvement observations to `IMPROVEMENT_LOG.md`.
-  Aggregate-only — no CV text, names, or ad URLs reach the prompt.
+- **Single-target MVP.** One pre-selected job ad ("Datový analytik"). Every
+  uploaded CV is matched against *that* ad only; the recruiter curates the
+  target skill set and everyone is scored on coverage of it.
+- **Score = skill coverage (criterion-referenced).** `skill_fit` = % of the
+  recruiter's curated target skill set the candidate evidences; `total ==
+  skill_fit`. **`bridge_fit`** is a *separate* "potential / growth" signal
+  (how bridgeable the level gaps are), shown beside the headline — never folded
+  in. `personal_fit` is retired. Grounded in I/O research: tenure barely
+  predicts performance, so we score demonstrated skills, not years.
+- **Doloženost (evidence strength).** Each matched skill is tagged by *how* it
+  was demonstrated — 🟢 work/internship/cert · 🟡 project/thesis/course · ⚪
+  claimed-only — and aggregated into a "doloženost" reliability label. This
+  replaces the old LLM self-confidence band.
+- **Two-pass candidate journey.** `run_generic_pass` (extract + translate, ~2
+  LLM calls) → `express_interest` (AI questionnaire, surfaces hidden skills) →
+  `submit_role_specific` (re-translate with answers + 1 reasoning call). The
+  recruiter then sees a scored, evidence-tagged list with a per-candidate AI
+  verdict.
+- **Trust by design.** Skills-only scoring (no demographic features; extraction
+  blinds name/gender/age); transparency notices; human-in-the-loop (score is
+  decision-support, never auto-reject); audit trail (raw CV + breakdown). See
+  [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) (EU AI Act high-risk + GDPR Art. 22).
+- **Data layer.** 18-table SQLAlchemy schema. SQLite for local/dev (restored
+  from a bundled, role-scoped `seed.sqlite.gz`); **Postgres/Neon** for a
+  persistent deploy (uploaded CVs survive Streamlit Cloud restarts) — change one
+  DSN. See [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ## Run (local dev)
 
 ```bash
 python3.11 -m venv venv
 source venv/bin/activate
-pip install -r requirements-dev.txt
-pip install -e . --no-deps
+pip install -r requirements.txt
+pip install -e . --no-deps          # SSL-cert workaround in this env; or a .pth file
 
-cp .env.example .env                    # add ANTHROPIC_API_KEY
+cp .env.example .env                # add ANTHROPIC_API_KEY (owner-run; agent key is scrubbed)
 
-# Build the SQLite DB and load taxonomy + level checklists
-python scripts/load_seeds.py
+# Restore the bundled role-scoped seed (ESCO data-role skills + the demo ad)
+python -c "from cv_bau_students.bootstrap import ensure_seeded; ensure_seeded()"
 
-# Optional: generate synthetic job ads (uses 1 LLM call per ad)
-python scripts/generate_synthetic_ads.py --per-cell 1
+# Seed the demo: prepare the target ad + walk the 6 synthetic CVs (~LLM calls)
+python -m scripts.seed_target_demo
 
-# Optional: normalise pre-scraped real ads from data/raw_ads/scraped
-python scripts/normalise_scraped_ads.py
-
-pytest -q                               # 54 tests, in-memory SQLite, no network
-
+pytest -q                           # 192 tests, in-memory SQLite, no network
 streamlit run src/cv_bau_students/ui/app.py
 ```
 
-## Pipeline
+Two-tab Streamlit: **Kandidát** (upload CV → see the position detail → express
+interest → answer 3 role questions) and **Recruiter** (curate target skills →
+scored candidate list with coverage % + doloženost + drill-in).
+
+## Pipeline (two-pass)
 
 ```mermaid
 flowchart TB
-    Upload[CV upload<br/>PDF/DOCX] --> Doc[document.extract_text<br/>+ language detect]
-    Doc --> LLM1[LLM #1 profile<br/>extract_profile.md]
-    LLM1 --> Profile[CandidateProfile<br/>+ candidate_type tag]
-    Profile --> Detector[Python detector<br/>classify.py — overrides LLM tag]
-    Detector --> Diagnose[completion.diagnose_missing]
-    Diagnose -->|round ≤ 2| LLM2[LLM #2 completion_questions.md]
-    LLM2 --> Fold[fold_answers_into_profile]
-    Fold --> Diagnose
-    Diagnose -->|no gaps| LLM3[LLM #3 translate_capabilities.md]
-    LLM3 --> Caps[Translated capabilities<br/>+ floor + dedup]
-    Caps --> HardFilter[matcher.hard_filter<br/>CEFR language KO]
-    HardFilter --> Score[matcher.score<br/>3-axis weighted total<br/>+ confidence band]
-    Score --> Rank[Top-N ranking]
-    Rank --> LLM4[LLM #4 reasoning.md<br/>per match]
-    LLM4 --> Output[CandidateAnalysis<br/>profile + matches + reasoning]
-    Output -.->|periodic batch| Reflect[meta/reflect.py<br/>privacy-filtered]
-    Reflect --> Log[IMPROVEMENT_LOG.md]
+    Upload[CV upload] --> Doc[document.extract_text + language]
+    Doc --> LLM1[LLM #1 extract_profile.md<br/>blind to demographics]
+    LLM1 --> Detector[Python detector classify.py<br/>vs the TARGET AD — overrides LLM tag]
+    Detector --> LLM2[LLM #2 translate_capabilities.md<br/>+ ESCO esco_term + skill_id]
+    LLM2 --> Persist[persist candidate + capabilities]
+    Persist --> Interest{Mám zájem?}
+    Interest -->|yes| Q[ensure_role_specific_questions<br/>AI questionnaire — generated once/ad]
+    Q --> Submit[submit_role_specific<br/>fold answers → re-translate → score]
+    Submit --> Score[matcher.score<br/>skill_fit = coverage of curated target set<br/>+ bridge_fit potential + matched_evidence]
+    Score --> Reason[LLM #3 reasoning.md<br/>verdict, evidenced > claimed]
+    Reason --> Recruiter[Recruiter view:<br/>coverage % · doloženost · drill-in]
 ```
 
-LLM calls per analysis: 4 fixed (profile + translate + 2 reasoning at
-top-5 cap) + up to 2 conditional (completion rounds when sparse). Cost
-≈ $0.05 per CV with caching off; reasoning_cache + lru_cache on
-translator drop repeat-analysis cost near zero.
+LLM calls: **upload ≈ 2** (extract + translate); **interest** = questions once
+per ad (cached); **submit** ≈ 1 (reason; translate cached). Extended thinking is
+on for the two interpretive calls (translate, reason) — toggle with
+`CV_BAU_STUDENTS_THINK=0`. `reasoning_cache` + `lru_cache` on the resolvers drop
+repeat cost near zero.
 
-## Comparability stance
+## Scoring & comparability
 
 | Old approach | This pipeline |
 |---|---|
-| Compare candidate's years of experience to ad's "5+ years required" | **Drop the years axis entirely** — students never have it. |
-| Match candidate's listed skills to ad's must-have list | Match **translated capabilities** sourced from thesis, school projects, brigády, internships — each with verbatim evidence quote + confidence + caveat. |
-| Surface a single 0-100 score | Surface **3 axes** (skill_fit / bridge_fit / personal_fit) + **confidence band** + **bridge plan**. The recruiter sees actionable gaps, not just a number. |
-| Mix students into the same ranked list as experienced candidates | **Two separate ranked lists** side-by-side with independent scales. The recruiter knows to calibrate expectations before reading the score. |
+| Compare years of experience to "5+ years required" | **Drop the years axis** — students don't have it; tenure is a weak performance predictor. |
+| Match listed skills to a must-have list | Match **translated capabilities** (thesis / projects / brigády / work) → resolved to **ESCO** skill ids, each with a verbatim evidence quote + source_type. |
+| One opaque 0–100 score | **Coverage % of the recruiter-curated target set** (headline) + **bridge_fit** potential (separate) + **doloženost** (evidence strength) + the matched/missing breakdown. |
+| Mix students into the experienced ranking | **Separate student / experienced columns** + career-changers — same fair axis, calibrated display. |
 
-The bridge plan reads from `data/level_checklists.csv` (junior / medior
-/ senior skill expectations per domain). For each gap it records
-`bridgeable_in_months` or `None` — the latter is the "experience-only,
-no shortcut" wall the comparability stance explicitly preserves.
+The recruiter **skill-picker** curates the role's target skills (suggested from
+the ad's ISCO occupation family); saving re-scores all candidates deterministically
+(no LLM). `bridge_fit` reads `data/level_checklists.csv` (per-domain junior /
+medior / senior expectations); `bridgeable_in_months=None` is the
+"experience-only, no shortcut" wall.
+
+**Candidate type** (student / career_changer / experienced) is decided by a
+deterministic Python classifier that **overrides** the LLM tag, judged relative
+to the target ad: <2y real work / only brigády / studying / fresh grad →
+*student* (potential); ≥2y work in a *different* field than the ad →
+*career_changer*; ≥2y aligned work → *experienced*.
+
+## Trust & compliance
+
+- **Skills-only.** No demographic features enter the score; the extract +
+  translate prompts are instructed to ignore name/gender/age/nationality.
+- **Human-in-the-loop.** The recruiter decides; the score is advisory and never
+  auto-rejects. Each candidate has a human-readable explanation (verdict +
+  matched/missing skills + per-skill evidence + raw CV).
+- **Honest framing.** CV skills are labelled self-reported / not verified; the
+  questionnaire probes specifics — it never auto-accuses.
+- [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) documents intended use, method,
+  data, fairness stance (incl. the calibration impossibility theorem), EU AI Act
+  high-risk classification, GDPR Art. 22, and known limits.
 
 ## Data layer
 
-SQLite via SQLAlchemy. 12 tables, sketched:
+18-table SQLAlchemy schema (SQLite local / Postgres prod), incl.: `candidates`,
+`profile_versions`, `translated_capabilities` (with `esco_skill_id`),
+`candidate_interests`, `matches` (with `skill_fit_detail_json` →
+matched/missing + `matched_evidence`), `role_specific_questions` /
+`role_specific_answers`, `ad_target_skills` (recruiter-curated target set),
+`job_ads` / `job_ad_skills`, and the taxonomy tables `skills`, `skill_aliases`,
+`skill_hierarchy`, `skill_industry_map` (occupation→skill), `occupations`,
+`level_checklists`.
 
+### Skill taxonomy: ESCO primary + NSP overlay (role-scoped seed)
+
+- **ESCO v1.2.x** (CC BY 4.0) — ~14k skills + aliases + hierarchy + occupation→
+  skill map (en+cs), loaded via `scripts/load_esco_csv.py`,
+  `load_esco_hierarchy.py`, `load_esco_occupations.py`,
+  `load_esco_occupation_labels.py`.
+- **Czech NSP / CDK** (CC0) — Czech-native skill-name aliases on the ESCO
+  backbone (`scripts/load_nsp.py`), helping Czech CV resolution.
+
+Resolution: deterministic normalize (lowercase + diacritics strip) → alias join
+→ rapidfuzz fuzzy fallback; the translator also emits an English `esco_term` for
+cross-lingual matching. Both `resolve_skill` (seed namespace) and
+`resolve_skill_esco` (ESCO namespace) are memoized.
+
+**Role-scoped seed.** The shipped `seed.sqlite.gz` is *scoped to the data-role
+family* (ESCO data analyst + data scientist + data engineer ≈ 100 skills + the
+demo ad), built by `scripts/build_scoped_seed.py` → `build_cloud_seed.py`. This
+keeps the single-target demo tiny (~2k rows) so cold-start is sub-second instead
+of pulling ~200k rows. Rebuild for a different role via `--isco` / occupation
+list (see `docs/DEPLOY.md`).
+
+## Deploy (Streamlit Cloud + persistence)
+
+- **Ephemeral SQLite** (default): the bundled scoped seed restores on every cold
+  start — fine for a read-only demo, uploads vanish on restart.
+- **Postgres / Neon** (persistent): set `CV_BAU_STUDENTS_DB_URL`; pour the demo
+  in once with `scripts/migrate_sqlite_to_postgres.py` (re-syncs id sequences;
+  `--truncate --confirm-destroy` guards against wiping candidate data). Uploaded
+  CVs then survive restarts. Full guide: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+Streamlit Secrets:
+```toml
+ANTHROPIC_API_KEY      = "sk-ant-…"
+CV_BAU_STUDENTS_DB_URL = "postgresql://…?sslmode=require"   # optional, for persistence
 ```
-candidates              (id, cv_hash, language, type, created_at)
-profile_versions        (id, candidate_id, round, profile_json, created_at)
-completion_questions    (id, candidate_id, round, field, question, answer)
-translated_capabilities (id, candidate_id, skill_canonical, evidence_quote,
-                         confidence, caveat, source_type, relevance)
-skills                  (id, canonical_name, family)
-skill_aliases           (alias, canonical_id)
-skill_hierarchy         (parent_id, child_id)
-level_checklists        (id, domain, level, skill_id, bridgeable_in_months, notes)
-job_ads                 (id, title, employer, location, remote_mode, level,
-                         domain, source, raw_text, ad_url, languages_required)
-job_ad_skills           (id, ad_id, skill_id, requirement)
-matches                 (id, candidate_id, ad_id, skill_fit, bridge_fit,
-                         personal_fit, total, confidence_band, bridge_plan_json)
-reasoning_cache         (id, candidate_id, ad_id, prompt_hash, rationale)
-```
-
-CSV seeds live at `src/cv_bau_students/data/`:
-- `taxonomy_seed.csv` — canonical skills + aliases + hierarchy (50+
-  rows for the IT / business demo set).
-- `level_checklists.csv` — 8 demo domains × {junior, medior, senior}
-  × skill, with `bridgeable_in_months` per row.
-
-### Skill taxonomy: ESCO primary + NSP overlay
-
-The 50-row manual seed boots the prototype, but production scale needs
-external authorities. Phase 11 wires two:
-
-1. **ESCO v1.2.x** (European Skills, Competences, Qualifications and
-   Occupations) — 14 158 skills with Czech + English preferred labels
-   and ISCO-08 mapping. CC BY 4.0. Loaded via the public REST API:
-
-   ```bash
-   python -m scripts.load_esco               # ~18 min full load
-   python -m scripts.load_esco --limit 500   # smoke
-   python -m scripts.load_esco --resume      # restart from offset
-   ```
-
-   Each ESCO concept becomes one `Skill` row (CS preferredLabel as
-   canonical, EN as `canonical_name_en`, ESCO URI for provenance) plus
-   N `SkillAlias` rows tagged `source="esco"` (CS + EN altLabels).
-
-2. **Czech NSP / CDK** (Národní soustava povolání) — Czech-native
-   competency phrasings + CZ-ISCO occupation codes. CC0 via
-   data.mpsv.cz. Loaded on top of ESCO:
-
-   ```bash
-   python -m scripts.load_nsp --source data/raw_nsp/competencies.json
-   ```
-
-   If an NSP competency name matches an existing ESCO row, the NSP
-   code is stitched onto it (no duplicate); otherwise the NSP
-   competency joins as a stand-alone skill. Aliases tagged
-   `source="nsp"`.
-
-The manual seed survives both passes — `resolve_skill()` walks
-canonical → alias across all three sources via case-insensitive ilike.
-Boot-time auto-load runs the manual seed + NSP overlay (fast); the
-full ESCO sweep stays a one-time CLI step deferred to deploy.
-
-Production migration to Postgres = change `CV_BAU_STUDENTS_DB_URL`.
-SQLAlchemy abstracts the dialect.
 
 ## Design choices
 
 | Choice | Rationale |
 |---|---|
-| SQLite from day one | This product makes hiring decisions. Persistent state + audit log are non-negotiable. CSV-only would simulate this badly. |
-| Hybrid fork of cv-estimator | 60 % code reuse, clean separation, fastest path to a working demo. |
-| Detector = Python first, LLM tag is advisory | Hard rules > LLM vibes. The LLM tag is recorded but the heuristic wins; disagreement is logged for audit. |
-| Iterative completion bounded at 2 rounds | Recruiter / candidate fatigue cap. Open fields stay explicit `None` in the output — surfaced as "missing data" in the UI, never hallucinated. |
-| All-LLM translator | Single mechanism for student / changer / experienced. Skepticism + per-source-type confidence calibration in the prompt, not in Python. |
-| 3-axis matcher (skill / bridge / personal) | Replaces the years axis the student pipeline can't use. Bridge plan turns the number into an actionable list. |
-| Two ranked lists in the recruiter UI | Students-with-potential vs experienced get independent scales. Avoids the "student 65 must be worse than experienced 70" trap. |
-| Meta-reflection log is advisory only | The system writes observations; humans iterate the prompts. Auto-applying suggestions would risk runaway prompt drift. |
+| Single target ad | Makes the metric interpretable (coverage of one curated set) and the demo readable. Corpus-wide ranking is above MVP scope. |
+| Criterion-referenced skill coverage | Fairer than ranking juniors against peers; I/O literature backs skills over tenure. |
+| Doloženost from `source_type` | Reliability = how a skill was demonstrated (work/project vs claimed), not LLM self-confidence. |
+| Detector overrides the LLM tag, classified vs the ad | Hard rules > prose; "experienced" requires ≥2y real aligned work. |
+| Two-pass journey, deferred reasoning | Fast upload (~2 LLM calls); the costly reasoning fires once, only for the ad the candidate chooses. |
+| Postgres-ready, role-scoped seed | Persistence without code change; scoping keeps cold-start fast for the single-target use-case. |
 
 ## Tests
 
 ```bash
-pytest -q   # 74 tests, no network — LLM + HTTP calls patched per test
+pytest -q   # 192 tests, no network — LLM + HTTP calls patched per test
 ```
 
 ## Data Sources & Attribution
 
-This service uses the ESCO classification of the European Commission.
-ESCO v1.2.x · Released under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-Source: <https://esco.ec.europa.eu>.
-
-Czech NSP (Národní soustava povolání) / CDK competency data: CC0,
-[data.mpsv.cz](https://data.mpsv.cz). Used for Czech-native phrasings
-and CZ-ISCO mapping.
-
-The bundled `seed.sqlite.gz` is a snapshot of the live ingest of those
-two datasets. See [NOTICES.md](NOTICES.md) for full third-party data
-notices.
+Uses the **ESCO** classification of the European Commission (v1.2.x,
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
+<https://esco.ec.europa.eu>) and Czech **NSP/CDK** competency data (CC0,
+[data.mpsv.cz](https://data.mpsv.cz)). The bundled `seed.sqlite.gz` is a
+role-scoped snapshot of that ingest. Demo CVs are synthetic (Apache-2.0). Full
+notices: [NOTICES.md](NOTICES.md).
 
 ## License
 
-Code: MIT — see [LICENSE](LICENSE).
-Bundled data: see [NOTICES.md](NOTICES.md) for per-dataset licenses.
+Code: MIT — see [LICENSE](LICENSE). Bundled data: per-dataset, see [NOTICES.md](NOTICES.md).
