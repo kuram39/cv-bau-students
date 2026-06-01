@@ -29,6 +29,7 @@ from cv_bau_students.models import (
     CompletionRound,
     GenericResult,
     InterestResult,
+    JobAd,
     MatchScore,
     PrefilledQuestion,
     RoleSpecificResult,
@@ -39,11 +40,14 @@ from cv_bau_students.translator.translate import translate
 # --- Shared extraction step -------------------------------------------------
 
 
-def _extract_and_classify(file_bytes: bytes, filename: str) -> tuple[CandidateProfile, dict]:
+def _extract_and_classify(
+    file_bytes: bytes, filename: str, target_ad: JobAd | None = None
+) -> tuple[CandidateProfile, dict]:
     """Document → text → LLM #1 → language override → Python detector.
 
     Returns (profile, meta) where meta carries detector audit fields the
-    callers fold into their processing_metadata.
+    callers fold into their processing_metadata. `target_ad` lets the detector
+    classify candidate_type relative to the actual job (single-target app).
     """
     raw_text = document.extract_text(file_bytes, filename)
     language = document.detect_language(raw_text)
@@ -51,7 +55,7 @@ def _extract_and_classify(file_bytes: bytes, filename: str) -> tuple[CandidatePr
     profile = extract_profile(raw_text)
     profile = profile.model_copy(update={"language": language})
 
-    classification = classify(profile)
+    classification = classify(profile, target_ad=target_ad)
     if classification.verdict != profile.candidate_type:
         profile = profile.model_copy(update={"candidate_type": classification.verdict})
 
@@ -143,17 +147,21 @@ def run_generic_pass(
     *,
     answer_provider=None,
     top_n: int = 3,
+    target_ad: JobAd | None = None,
 ) -> GenericResult:
     """Stage 1 — role-agnostic. Extract, BAU-complete, hard-filter, score.
 
     Persists the candidate + translated capabilities (NOT Match rows —
     those land only when the user expresses interest in a specific ad).
 
+    `target_ad` (single-target app) lets the detector classify candidate_type
+    relative to the actual job (experienced-in-field vs switching INTO it).
+
     When BAU-mandatory fields are missing and `answer_provider` can't
     fill them, returns `status="needs_completion"` with the open round
     so the UI can ask the candidate.
     """
-    profile, meta = _extract_and_classify(file_bytes, filename)
+    profile, meta = _extract_and_classify(file_bytes, filename, target_ad)
 
     # BAU-mandatory completion (role-agnostic, strict minimums).
     profile, completion_rounds = _run_completion_loop(

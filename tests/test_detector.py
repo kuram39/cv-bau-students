@@ -123,6 +123,51 @@ def test_target_domain_matching_history_keeps_experienced():
     assert result.verdict == "experienced"
 
 
+def _data_analyst_ad():
+    from cv_bau_students.models import JobAd
+
+    return JobAd(
+        title="Datový analytik/Datová analytička",
+        location="Praha",
+        remote_mode="hybrid",
+        level="medior",
+        domain="data-analyst",
+        raw_text=".",
+        source="scraped",
+    )
+
+
+def test_classify_relative_to_target_ad_career_changer():
+    """With a target ad: ≥2y work in a DIFFERENT field than the ad → career_changer,
+    even with no self-stated target_domains."""
+    profile = _experienced_profile(
+        target_domains=[],  # nothing self-stated
+        work_experience=[
+            WorkExperienceItem(
+                employer="Restaurace", role="Provozní manažer", domain="hospitality"
+            ),
+            WorkExperienceItem(employer="Restaurace", role="Vrchní číšník", domain="hospitality"),
+        ],
+    )
+    result = classify(profile, target_ad=_data_analyst_ad(), today=TODAY)
+    assert result.verdict == "career_changer"
+
+
+def test_classify_relative_to_target_ad_experienced_in_field():
+    """Work history aligned with the ad's field → experienced (no target_domains
+    needed; 'Analytik' aligns with 'Datový analytik')."""
+    profile = _experienced_profile(
+        target_domains=[],
+        work_experience=[
+            WorkExperienceItem(
+                employer="Rohlik", role="Data Analyst", domain="e-commerce / data analytics"
+            ),
+        ],
+    )
+    result = classify(profile, target_ad=_data_analyst_ad(), today=TODAY)
+    assert result.verdict == "experienced"
+
+
 def test_staying_in_field_analyst_is_experienced_despite_freetext_domain():
     """Regression (Lucie/Petr): target is the slug 'data-analyst' while the
     work role/domain are free prose ('Lead Data Analyst', 'e-commerce / data
