@@ -12,6 +12,7 @@ from __future__ import annotations
 import streamlit as st
 
 from cv_bau_students.candidates import repo as candidates_repo
+from cv_bau_students.evidence import TIER_EMOJI
 from cv_bau_students.explanation.format import parse_reasoning
 from cv_bau_students.jobads import repo as jobads_repo
 from cv_bau_students.models import JobAd
@@ -35,6 +36,14 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
     st.caption(
         f"**{target_ad.employer or '—'}** · {target_ad.level} · "
         f"{target_ad.location} · {target_ad.remote_mode}"
+    )
+    # Decision-support + transparency framing (EU AI Act high-risk / GDPR Art. 22).
+    st.info(
+        "ℹ️ Skóre = **podpora rozhodování**, ne automatické odmítnutí — finální "
+        "rozhodnutí je na tobě. Hodnotíme **dovednosti** (pokrytí cílové sady), "
+        "ne osobní údaje. Dovednosti z CV jsou **self-reported, neověřené**; "
+        '„doloženost" ukazuje, jak je kandidát doložil (práce/projekt vs jen uvedeno). '
+        "Metoda + limity: viz `docs/MODEL_CARD.md`."
     )
     _render_job_description(target_ad)
     _render_target_skill_picker(target_ad)
@@ -190,29 +199,18 @@ def _render_column(ad_id: int, *, kind: str) -> None:
         _render_candidate_row(ad_id, summary)
 
 
-def _confidence_label(band: float) -> str:
-    """Translate the confidence band (smaller = surer) into a plain word.
-
-    The band comes from the translator's average capability confidence, NOT
-    from the coverage % (which is an exact count). So we show it as a separate
-    'how sure are we about the CV reading' signal, not a ± on the number.
-    """
-    if band <= 10:
-        return "vysoká"
-    if band <= 20:
-        return "střední"
-    return "nízká"
-
-
 def _render_candidate_row(ad_id: int, summary) -> None:
     """One compact, collapsible list row per candidate. The header line is the
-    whole scannable summary (badge · name · coverage % · confidence); progress
+    whole scannable summary (badge · name · coverage % · doloženost); progress
     bar, top skills, the AI headline and the full drill-in live inside the
-    expander so the page reads as a list, not a stack of blocks."""
+    expander so the page reads as a list, not a stack of blocks.
+
+    'Doloženost' = evidence strength of the matched skills (how they were
+    demonstrated — work/project vs claimed), NOT LLM self-confidence."""
     badge = TYPE_BADGE.get(summary.kind, "❓")
     label = (
         f"{badge} · {summary.display_name} · {summary.total:.0f} % · "
-        f"spolehlivost: {_confidence_label(summary.confidence_band)}"
+        f"doloženost: {summary.doloznost}"
     )
     with st.expander(label):
         st.progress(min(1.0, summary.total / 100))
@@ -321,7 +319,14 @@ def _render_skill_fit_detail(d) -> None:
         st.caption(
             f"🎯 Skill coverage — {d.role_essential_evidenced}/{d.role_essential_total} " f"({src})"
         )
-        if d.role_essential_matched:
-            st.caption("🟢 Prokázané: " + " · ".join(d.role_essential_matched))
+        # Per-skill evidence strength: how each matched skill was demonstrated
+        # (work/project vs claimed) — not LLM self-confidence.
+        evidence = getattr(d, "matched_evidence", None) or []
+        if evidence:
+            tags = " · ".join(f"{TIER_EMOJI.get(tier, '⚪')} {name}" for name, tier in evidence)
+            st.caption("Pokryté dovednosti (doloženost): " + tags)
+            st.caption("🟢 prokázané praxí · 🟡 projekt/studium · ⚪ jen uvedeno")
+        elif d.role_essential_matched:
+            st.caption("Pokryté: " + " · ".join(d.role_essential_matched))
         if d.role_essential_missing:
-            st.caption("⚪ Chybějící (ukázka): " + " · ".join(d.role_essential_missing))
+            st.caption("❌ Chybějící (ukázka): " + " · ".join(d.role_essential_missing))

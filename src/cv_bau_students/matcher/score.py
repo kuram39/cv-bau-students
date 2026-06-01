@@ -17,6 +17,7 @@ import statistics
 from collections.abc import Iterable
 
 from cv_bau_students.config import ROLE_ESSENTIAL_GAP_SAMPLE
+from cv_bau_students.evidence import evidence_tier
 from cv_bau_students.jobads.repo import get_target_skills
 from cv_bau_students.levels.repo import bridge_plan, checklist_exists
 from cv_bau_students.models import (
@@ -46,10 +47,16 @@ def score_match(
     ad_nice_ids = _resolve_iterable(ad.nice_to_have)
     candidate_esco_ids = _resolve_candidate_esco_ids(capabilities, profile)
 
+    # Evidence strength per skill id: how the candidate demonstrated it
+    # (source_type → tier). Keyed by the ESCO skill_id the translator attached.
+    evidence_by_id = {
+        cap.skill_id: cap.source_type for cap in capabilities if cap.skill_id is not None
+    }
+
     # MVP headline: skill coverage of the target set (recruiter-curated, else
     # the ad's must/nice). This is the comparator across students/experienced.
     skill_fit, skill_fit_detail = _skill_fit(
-        candidate_skill_ids, ad_must_ids, ad_nice_ids, ad, candidate_esco_ids
+        candidate_skill_ids, ad_must_ids, ad_nice_ids, ad, candidate_esco_ids, evidence_by_id
     )
     # Bridge fit kept as a SECONDARY "potential/growth" signal (how bridgeable
     # the gaps are) — shown beside, NOT folded into the headline. personal_fit
@@ -83,6 +90,7 @@ def _skill_fit(
     nice: set[int],
     ad: JobAd,
     candidate_esco: set[int],
+    evidence_by_id: dict[int, str] | None = None,
 ) -> tuple[float, SkillFitDetail]:
     """MVP headline = % of the *target skill set* the candidate covers.
 
@@ -127,6 +135,12 @@ def _skill_fit(
     detail.role_essential_evidenced = len(matched)
     detail.role_essential_matched = _sorted_names(matched, namemap)
     detail.role_essential_missing = _sorted_names(missing_sample, namemap)
+    # Evidence strength per matched skill — from the backing capability's
+    # source_type (explicit-only matches have no capability → "weak"/claimed).
+    ev = evidence_by_id or {}
+    detail.matched_evidence = [
+        (namemap[i], evidence_tier(ev.get(i))) for i in sorted(matched) if i in namemap
+    ]
     return coverage, detail
 
 

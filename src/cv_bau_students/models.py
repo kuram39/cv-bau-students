@@ -194,6 +194,11 @@ class SkillFitDetail(BaseModel):
     role_essential_matched: list[str] = Field(default_factory=list)
     role_essential_missing: list[str] = Field(default_factory=list)  # capped sample
     bonus_applied: float = 0.0  # points the enrichment added to base skill_fit
+    # Evidence strength per matched target skill: (skill_name, "strong"|"medium"
+    # |"weak"). Derived from the backing capability's source_type; a skill matched
+    # only via explicit_skills (no capability) → "weak" (claimed). Optional —
+    # absent on pre-evidence Match rows until a re-score populates it.
+    matched_evidence: list[tuple[str, str]] = Field(default_factory=list)
 
 
 class MatchScore(BaseModel):

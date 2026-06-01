@@ -27,6 +27,7 @@ from cv_bau_students.db_models import (
     RoleSpecificQuestion,
     TranslatedCapabilityRow,
 )
+from cv_bau_students.evidence import doloznost_label
 from cv_bau_students.models import (
     CandidateProfile,
     GapItem,
@@ -49,6 +50,10 @@ class CandidateSummary(BaseModel):
     display_name: str  # "Anonymous #N" or candidate.profile.name
     total: float
     confidence_band: float
+    # Evidence strength of the matched target skills ("vysoká"|"střední"|"nízká")
+    # — derived from how those skills were demonstrated (source_type), replacing
+    # the old LLM self-confidence band as the recruiter-facing reliability signal.
+    doloznost: str = "nízká"
     top_skills: list[str] = Field(default_factory=list)
     headline: str  # first sentence of Match.reasoning
 
@@ -411,6 +416,8 @@ def get_candidates_for_ad(
                 .all()
             )
             top_skills = [c.skill_canonical for c in caps]
+            detail_json = m.skill_fit_detail_json or {}
+            tiers = [t for _, t in (detail_json.get("matched_evidence") or [])]
             results.append(
                 CandidateSummary(
                     candidate_id=cand.id,
@@ -418,6 +425,7 @@ def get_candidates_for_ad(
                     display_name=_display_name_for(profile, cand.id),
                     total=m.total,
                     confidence_band=m.confidence_band,
+                    doloznost=doloznost_label(tiers),
                     top_skills=top_skills,
                     headline=_reasoning_headline(_load_match_reasoning(session, cand.id, ad_id)),
                 )
