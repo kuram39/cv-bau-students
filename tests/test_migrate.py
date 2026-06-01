@@ -7,10 +7,11 @@ copy, a sample row's fidelity, and --truncate re-run idempotency.
 
 from __future__ import annotations
 
-from scripts.migrate_sqlite_to_postgres import migrate
+import pytest
+from scripts.migrate_sqlite_to_postgres import TruncateGuardError, migrate
 from sqlalchemy import create_engine, func, insert, select
 
-from cv_bau_students.db_models import Base, JobAdRow, Skill
+from cv_bau_students.db_models import Base, Candidate, JobAdRow, Skill
 
 
 def _seed_source(url: str) -> None:
@@ -74,3 +75,39 @@ def test_migrate_truncate_is_idempotent(tmp_path):
 
     assert counts["skills"] == 2
     assert _count(dst, Skill) == 2  # not doubled
+
+
+def test_truncate_refuses_to_wipe_candidate_data_without_confirm(tmp_path):
+    """R6 guard: --truncate over a target holding candidate rows must abort
+    unless --confirm-destroy; taxonomy-only targets are unaffected."""
+    src = f"sqlite:///{tmp_path}/src.sqlite"
+    dst = f"sqlite:///{tmp_path}/dst.sqlite"
+    _seed_source(src)
+    # Seed a candidate directly into the TARGET (simulates a populated prod DB).
+    dst_eng = create_engine(dst, future=True)
+    Base.metadata.create_all(dst_eng)
+    with dst_eng.begin() as conn:
+        conn.execute(
+            insert(Candidate), [{"id": 1, "cv_hash": "h", "language": "cs", "type": "student"}]
+        )
+
+    # No confirm → abort, candidate row untouched.
+    with pytest.raises(TruncateGuardError):
+        migrate(src, dst, truncate=True, verbose=False)
+    assert _count(dst, Candidate) == 1
+
+    # With confirm → proceeds (candidate wiped, source poured in).
+    migrate(src, dst, truncate=True, confirm_destroy=True, verbose=False)
+    assert _count(dst, Skill) == 2
+    assert _count(dst, Candidate) == 0  # source had no candidates
+
+
+def test_truncate_allowed_on_taxonomy_only_target_without_confirm(tmp_path):
+    """A target with no candidate/match rows (fresh or taxonomy-only) re-pours
+    freely — the guard only protects irreplaceable user data."""
+    src = f"sqlite:///{tmp_path}/src.sqlite"
+    dst = f"sqlite:///{tmp_path}/dst.sqlite"
+    _seed_source(src)
+    migrate(src, dst, verbose=False)  # dst now has skills+ads, no candidates
+    migrate(src, dst, truncate=True, verbose=False)  # no confirm needed → no raise
+    assert _count(dst, Skill) == 2
