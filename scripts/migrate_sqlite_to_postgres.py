@@ -29,7 +29,7 @@ import argparse
 import os
 import sys
 
-from sqlalchemy import create_engine, delete, func, insert, select
+from sqlalchemy import create_engine, delete, func, insert, select, text
 
 from cv_bau_students import config
 from cv_bau_students.db_models import Base
@@ -102,6 +102,23 @@ def migrate(
             counts[table.name] = len(rows)
             if verbose:
                 print(f"  {table.name:28} {len(rows):>7} rows")
+
+        # Postgres: rows were inserted with explicit ids, so the SERIAL id
+        # sequences were never advanced — the next app INSERT would reuse id=1
+        # and hit a UniqueViolation. Re-sync each sequence to MAX(id).
+        if target.dialect.name == "postgresql":
+            for table in tables:
+                if "id" not in table.columns:
+                    continue
+                dst.execute(
+                    text(
+                        f"SELECT setval(pg_get_serial_sequence('{table.name}', 'id'), "
+                        f"COALESCE((SELECT MAX(id) FROM {table.name}), 1), "
+                        f"(SELECT MAX(id) FROM {table.name}) IS NOT NULL)"
+                    )
+                )
+            if verbose:
+                print("  (reset Postgres id sequences to MAX(id))")
 
     total = sum(counts.values())
     if verbose:
