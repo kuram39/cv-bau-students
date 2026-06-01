@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from datetime import datetime
 
-_NOW = datetime(2026, 1, 1, 12, 0, 0)
-
 from scripts.build_scoped_seed import build_scoped
 from sqlalchemy import create_engine, func, insert, select
 
@@ -26,6 +24,7 @@ from cv_bau_students.db_models import (
     TranslatedCapabilityRow,
 )
 
+_NOW = datetime(2026, 1, 1, 12, 0, 0)
 URI_KEEP = "uri:occ:keep"
 URI_DROP = "uri:occ:drop"
 
