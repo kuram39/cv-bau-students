@@ -104,6 +104,30 @@ def test_must_nice_fallback_when_no_curated_set():
     assert score.total == score.skill_fit
 
 
+def test_matched_evidence_tags_by_source_type():
+    """skill_fit_detail.matched_evidence tags each matched target skill with its
+    evidence tier from the backing capability's source_type; an explicit-only
+    match (no capability) → weak."""
+    ids = _seed_skills(["SQL", "Python"])
+    ad = _ad(must_have=["SQL"], nice_to_have=[])
+    ad_id = store_ad(ad)
+    ad = ad.model_copy(update={"id": ad_id})
+    set_target_skills(ad_id, core=[ids["SQL"], ids["Python"]], optional=[])
+
+    cap = TranslatedCapability(
+        skill="Python pro analýzu",
+        evidence_quote="…",
+        confidence=0.8,
+        source_type="internship",  # → strong
+        skill_id=ids["Python"],
+    )
+    # SQL covered only via explicit_skills (no capability) → weak.
+    score = score_match(_profile(["SQL"]), [cap], ad)
+    ev = dict(score.skill_fit_detail.matched_evidence)
+    assert ev["Python"] == "strong"
+    assert ev["SQL"] == "weak"
+
+
 def test_no_target_set_scores_zero():
     _seed_skills(["SQL"])
     ad = _ad(must_have=[], nice_to_have=[])

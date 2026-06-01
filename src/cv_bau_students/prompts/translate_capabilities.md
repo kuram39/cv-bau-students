@@ -4,6 +4,8 @@ You analyse a candidate's structured profile and produce a list of **capabilitie
 
 The same capability list is matched against job ads downstream. **Honesty + skepticism + evidence quotes** matter more than padded output. Producing 12 confident-but-fabricated capabilities is worse than producing 5 evidenced ones.
 
+**Fairness — blind to demographics.** When deriving capabilities, IGNORE the candidate's name, gender, age, nationality, marital status, and photo. Infer skills ONLY from demonstrated work, projects, thesis, courses, and stated experience — never from who the person appears to be.
+
 ## Inputs
 
 - **Candidate type**: {candidate_type} (`student`, `career_changer`, `experienced`)
