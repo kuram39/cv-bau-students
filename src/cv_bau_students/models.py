@@ -97,6 +97,10 @@ class CandidateProfile(BaseModel):
     hobbies: list[str] = Field(default_factory=list)
     # Detector audit
     total_work_years: float = 0.0
+    # Non-brigáda FTE years only (brigády excluded, not 0.3×-weighted). The
+    # candidate-type threshold judges REAL experience on this; None = legacy
+    # profile that predates the field → classifier falls back to total_work_years.
+    real_work_years: float | None = None
     most_recent_grad_year: int | None = None
     studying_in_progress: bool = False
 

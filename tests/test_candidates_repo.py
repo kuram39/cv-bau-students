@@ -279,6 +279,37 @@ def test_get_candidates_for_ad_survives_duplicate_reasoning_cache():
     assert detail is not None
 
 
+def test_summary_doloznost_neurceno_for_unrescored_match():
+    """A Match whose skill_fit_detail_json predates `matched_evidence` (key
+    absent) must show doloženost 'neurčeno', not 'nízká'."""
+    from cv_bau_students.db import get_session
+    from cv_bau_students.db_models import Match
+
+    ad_id = _make_ad()
+    cid = repo.store_initial_candidate(
+        file_hash="h-unrescored", profile=_student_profile("Anna"), capabilities=[]
+    )
+    repo.record_interest(cid, ad_id, "interested")
+    with get_session() as session:
+        session.add(
+            Match(
+                candidate_id=cid,
+                ad_id=ad_id,
+                skill_fit=50.0,
+                bridge_fit=-1.0,
+                personal_fit=0.0,
+                total=50.0,
+                confidence_band=20.0,
+                bridge_plan_json=[],
+                # legacy detail: matched skills but NO matched_evidence key
+                skill_fit_detail_json={"role_essential_matched": ["SQL"]},
+            )
+        )
+    rows = repo.get_candidates_for_ad(ad_id)
+    assert len(rows) == 1
+    assert rows[0].doloznost == "neurčeno"
+
+
 def test_get_candidates_for_ad_filters_by_kind():
     ad_id = _make_ad()
     cid_stud = repo.store_initial_candidate(

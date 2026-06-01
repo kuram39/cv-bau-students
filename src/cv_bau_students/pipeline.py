@@ -59,6 +59,13 @@ def _extract_and_classify(
     if classification.verdict != profile.candidate_type:
         profile = profile.model_copy(update={"candidate_type": classification.verdict})
 
+    # Single-target app: seed the target domain so the translator keeps
+    # target-relevant capabilities. Its prompt drops capabilities outside
+    # `target_domains`; a switcher with no self-stated target (now classified
+    # career_changer vs the ad) would otherwise lose data-relevant skills.
+    if target_ad is not None and not profile.target_domains and target_ad.domain:
+        profile = profile.model_copy(update={"target_domains": [target_ad.domain]})
+
     meta = {
         "filename": filename,
         "raw_text": raw_text,  # passed through so the candidate row can store it

@@ -63,6 +63,7 @@ Return a single JSON object — no prose, no markdown fences. Schema:
   "certifications": ["<certification name>", "..."],
   "hobbies": ["<hobby name>", "..."],
   "total_work_years": <float — sum of full-time-equivalent years across NON-brigada work_experience entries; brigády count at 0.3× each>,
+  "real_work_years": <float — FTE years of NON-brigáda work ONLY; brigády fully EXCLUDED (not 0.3×). The "real career experience" the candidate-type classifier judges on>,
   "most_recent_grad_year": <int — most recent education end_year, even if in_progress> | null,
   "studying_in_progress": true | false
 }

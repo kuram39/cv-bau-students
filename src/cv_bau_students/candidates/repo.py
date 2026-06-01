@@ -417,7 +417,14 @@ def get_candidates_for_ad(
             )
             top_skills = [c.skill_canonical for c in caps]
             detail_json = m.skill_fit_detail_json or {}
-            tiers = [t for _, t in (detail_json.get("matched_evidence") or [])]
+            # `matched_evidence` ABSENT (key missing) = a Match that predates the
+            # evidence field and was never re-scored → unknown, NOT low. An empty
+            # list (present) = computed, no evidenced skills → genuinely low.
+            matched_evidence = detail_json.get("matched_evidence")
+            if matched_evidence is None:
+                doloznost = "neurčeno"
+            else:
+                doloznost = doloznost_label([t for _, t in matched_evidence])
             results.append(
                 CandidateSummary(
                     candidate_id=cand.id,
@@ -425,7 +432,7 @@ def get_candidates_for_ad(
                     display_name=_display_name_for(profile, cand.id),
                     total=m.total,
                     confidence_band=m.confidence_band,
-                    doloznost=doloznost_label(tiers),
+                    doloznost=doloznost,
                     top_skills=top_skills,
                     headline=_reasoning_headline(_load_match_reasoning(session, cand.id, ad_id)),
                 )

@@ -128,6 +128,35 @@ def test_matched_evidence_tags_by_source_type():
     assert ev["SQL"] == "weak"
 
 
+def test_evidence_via_fallback_and_strongest_tier_wins():
+    """A capability matched via the esco_term fallback (no skill_id) still carries
+    its tier; when several capabilities resolve to one id, the STRONGEST wins."""
+    ids = _seed_skills(["Python"])
+    ad = _ad(must_have=[], nice_to_have=[])
+    ad_id = store_ad(ad)
+    ad = ad.model_copy(update={"id": ad_id})
+    set_target_skills(ad_id, core=[ids["Python"]], optional=[])
+    caps = [
+        TranslatedCapability(  # no skill_id → resolved via esco_term fallback
+            skill="Python pro analýzu",
+            esco_term="Python",
+            evidence_quote="…",
+            confidence=0.8,
+            source_type="internship",  # strong
+        ),
+        TranslatedCapability(  # same skill via stored id, weaker source
+            skill="Python",
+            evidence_quote="…",
+            confidence=0.6,
+            source_type="hobby",  # weak
+            skill_id=ids["Python"],
+        ),
+    ]
+    score = score_match(_profile([]), caps, ad)
+    ev = dict(score.skill_fit_detail.matched_evidence)
+    assert ev["Python"] == "strong"  # fallback carried tier + strongest wins
+
+
 def test_no_target_set_scores_zero():
     _seed_skills(["SQL"])
     ad = _ad(must_have=[], nice_to_have=[])

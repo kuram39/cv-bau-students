@@ -88,28 +88,34 @@ def classify(
     current_year = (today or date.today()).year
     reasons: list[str] = []
 
+    # Judge on REAL (non-brigáda) experience. total_work_years dilutes brigády at
+    # 0.3×, so brigáda-heavy histories could cross the threshold without real
+    # career years. Fall back to total_work_years for legacy profiles (None).
+    real_years = (
+        profile.real_work_years if profile.real_work_years is not None else profile.total_work_years
+    )
+
     # Student rules — order matters.
-    if profile.studying_in_progress and profile.total_work_years < STUDENT_MAX_WORK_YEARS:
+    if profile.studying_in_progress and real_years < STUDENT_MAX_WORK_YEARS:
         reasons.append(
-            f"studying_in_progress=True AND total_work_years"
-            f" ({profile.total_work_years}) < {STUDENT_MAX_WORK_YEARS}"
+            f"studying_in_progress=True AND real_work_years"
+            f" ({real_years}) < {STUDENT_MAX_WORK_YEARS}"
         )
         verdict: CandidateType = "student"
     elif (
         profile.most_recent_grad_year is not None
         and profile.most_recent_grad_year >= current_year - RECENT_GRAD_LOOKBACK_YEARS
-        and profile.total_work_years < STUDENT_MAX_WORK_YEARS
+        and real_years < STUDENT_MAX_WORK_YEARS
     ):
         reasons.append(
             f"fresh grad — most_recent_grad_year"
             f" ({profile.most_recent_grad_year}) >="
             f" {current_year - RECENT_GRAD_LOOKBACK_YEARS}"
-            f" AND total_work_years ({profile.total_work_years}) <"
-            f" {STUDENT_MAX_WORK_YEARS}"
+            f" AND real_work_years ({real_years}) < {STUDENT_MAX_WORK_YEARS}"
         )
         verdict = "student"
     else:
-        verdict = _classify_changer_vs_experienced(profile, reasons, target_ad)
+        verdict = _classify_changer_vs_experienced(profile, reasons, target_ad, real_years)
 
     return ClassificationResult(
         verdict=verdict,
@@ -119,7 +125,10 @@ def classify(
 
 
 def _classify_changer_vs_experienced(
-    profile: CandidateProfile, reasons: list[str], target_ad: JobAd | None = None
+    profile: CandidateProfile,
+    reasons: list[str],
+    target_ad: JobAd | None = None,
+    real_years: float | None = None,
 ) -> CandidateType:
     """experienced vs career_changer.
 
@@ -128,14 +137,20 @@ def _classify_changer_vs_experienced(
     history → experienced. Without an ad: legacy self-stated target_domains
     comparison (vague aspiration alone is not evidence of a change).
     """
-    # Too little REAL work → early-career "student / potential" bucket, NOT
-    # experienced. A non-studying, non-fresh-grad person with <2y work (career
-    # gap, re-entry, late starter) has no tenure to stand on → judged on
-    # potential, like a student. "experienced" is reserved for ≥2y real work.
-    if profile.total_work_years < STUDENT_MAX_WORK_YEARS:
+    if real_years is None:
+        real_years = (
+            profile.real_work_years
+            if profile.real_work_years is not None
+            else profile.total_work_years
+        )
+    # Too little REAL (non-brigáda) work → early-career "student / potential"
+    # bucket, NOT experienced. A non-studying, non-fresh-grad person with <2y real
+    # work (career gap, re-entry, late starter) has no tenure to stand on →
+    # judged on potential. "experienced" is reserved for ≥2y real work.
+    if real_years < STUDENT_MAX_WORK_YEARS:
         reasons.append(
-            f"work_years ({profile.total_work_years}) < {STUDENT_MAX_WORK_YEARS}"
-            " — too little experience → student/potential"
+            f"real_work_years ({real_years}) < {STUDENT_MAX_WORK_YEARS}"
+            " — too little real experience → student/potential"
         )
         return "student"
 
