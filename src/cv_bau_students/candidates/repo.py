@@ -16,7 +16,6 @@ from collections.abc import Iterable
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from cv_bau_students.db import get_session
 from cv_bau_students.db_models import (
@@ -202,18 +201,24 @@ def replace_capabilities(candidate_id: int, capabilities: Iterable[TranslatedCap
 
 
 def record_interest(candidate_id: int, ad_id: int, status: str) -> None:
-    """Insert or update a CandidateInterest row (one per candidate × ad)."""
+    """Insert or update a CandidateInterest row (one per candidate × ad).
+
+    Dialect-agnostic select-then-upsert — the previous SQLite-only
+    `on_conflict_do_update` raised `'OnConflictDoUpdate' object has no attribute
+    'constraint_target'` on Postgres."""
     if status not in ("interested", "wait"):
         raise ValueError(f"invalid interest status: {status!r}")
     with get_session() as session:
-        session.execute(
-            sqlite_insert(CandidateInterest)
-            .values(candidate_id=candidate_id, ad_id=ad_id, status=status)
-            .on_conflict_do_update(
-                index_elements=["candidate_id", "ad_id"],
-                set_={"status": status},
+        row = session.execute(
+            select(CandidateInterest).where(
+                CandidateInterest.candidate_id == candidate_id,
+                CandidateInterest.ad_id == ad_id,
             )
-        )
+        ).scalar_one_or_none()
+        if row is None:
+            session.add(CandidateInterest(candidate_id=candidate_id, ad_id=ad_id, status=status))
+        else:
+            row.status = status
 
 
 def ensure_role_questions(
