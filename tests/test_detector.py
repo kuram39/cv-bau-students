@@ -170,6 +170,30 @@ def test_only_brigada_history_is_student_not_changer_or_experienced():
     assert any("only brigáda" in r for r in result.reasons)
 
 
+def test_real_work_years_gates_student_not_brigada_inflated():
+    """Brigáda-inflated total_work_years must not leave the student bucket: 1y
+    real + brigáda → total 2.5 but real_work_years 1.0 → student."""
+    profile = _experienced_profile(
+        target_domains=[],
+        total_work_years=2.5,  # diluted by brigáda 0.3×
+        real_work_years=1.0,  # <2 real → student
+        most_recent_grad_year=2016,
+        studying_in_progress=False,
+        work_experience=[
+            WorkExperienceItem(employer="X", role="Analytik", domain="data analytics"),
+            WorkExperienceItem(employer="Mc", role="Obsluha", domain="fast food", is_brigada=True),
+        ],
+    )
+    assert classify(profile, target_ad=_data_analyst_ad(), today=TODAY).verdict == "student"
+
+
+def test_legacy_profile_without_real_work_years_falls_back_to_total():
+    """real_work_years=None (legacy) → classifier uses total_work_years."""
+    profile = _experienced_profile()  # real_work_years defaults to None, total=7
+    assert profile.real_work_years is None
+    assert classify(profile, today=TODAY).verdict == "experienced"
+
+
 def test_low_experience_non_student_is_student_not_experienced():
     """No real work + not studying + not fresh grad (old grad, gap) must NOT
     fall to 'experienced' — too little experience → student/potential."""

@@ -47,16 +47,17 @@ def score_match(
     ad_nice_ids = _resolve_iterable(ad.nice_to_have)
     candidate_esco_ids = _resolve_candidate_esco_ids(capabilities, profile)
 
-    # Evidence strength per skill id: how the candidate demonstrated it
-    # (source_type → tier). Keyed by the ESCO skill_id the translator attached.
-    evidence_by_id = {
-        cap.skill_id: cap.source_type for cap in capabilities if cap.skill_id is not None
-    }
+    # Evidence strength per skill id: the STRONGEST tier among the capabilities
+    # that resolve to it. Includes the esco_term/skill fallback id (so a
+    # capability matched without a stored skill_id still carries its tier), and
+    # keeps the best tier when several capabilities (different source_types)
+    # resolve to the same id.
+    tier_by_id = _evidence_tier_by_id(capabilities)
 
     # MVP headline: skill coverage of the target set (recruiter-curated, else
     # the ad's must/nice). This is the comparator across students/experienced.
     skill_fit, skill_fit_detail = _skill_fit(
-        candidate_skill_ids, ad_must_ids, ad_nice_ids, ad, candidate_esco_ids, evidence_by_id
+        candidate_skill_ids, ad_must_ids, ad_nice_ids, ad, candidate_esco_ids, tier_by_id
     )
     # Bridge fit kept as a SECONDARY "potential/growth" signal (how bridgeable
     # the gaps are) — shown beside, NOT folded into the headline. personal_fit
@@ -90,7 +91,7 @@ def _skill_fit(
     nice: set[int],
     ad: JobAd,
     candidate_esco: set[int],
-    evidence_by_id: dict[int, str] | None = None,
+    tier_by_id: dict[int, str] | None = None,
 ) -> tuple[float, SkillFitDetail]:
     """MVP headline = % of the *target skill set* the candidate covers.
 
@@ -135,13 +136,34 @@ def _skill_fit(
     detail.role_essential_evidenced = len(matched)
     detail.role_essential_matched = _sorted_names(matched, namemap)
     detail.role_essential_missing = _sorted_names(missing_sample, namemap)
-    # Evidence strength per matched skill — from the backing capability's
-    # source_type (explicit-only matches have no capability → "weak"/claimed).
-    ev = evidence_by_id or {}
+    # Evidence strength per matched skill — strongest tier of the backing
+    # capabilities (explicit-only matches have no capability → "weak"/claimed).
+    tiers = tier_by_id or {}
     detail.matched_evidence = [
-        (namemap[i], evidence_tier(ev.get(i))) for i in sorted(matched) if i in namemap
+        (namemap[i], tiers.get(i, "weak")) for i in sorted(matched) if i in namemap
     ]
     return coverage, detail
+
+
+def _evidence_tier_by_id(capabilities: list[TranslatedCapability]) -> dict[int, str]:
+    """Strongest evidence tier per resolved skill id across all capabilities.
+
+    Resolves each capability to its skill id (stored `skill_id`, else the same
+    `esco_term`/`skill` fallback the matcher uses) and keeps the best tier when
+    several capabilities map to one id."""
+    rank = {"weak": 0, "medium": 1, "strong": 2}
+    out: dict[int, str] = {}
+    for cap in capabilities:
+        sid = cap.skill_id
+        if sid is None:
+            m = resolve_skill_esco(cap.esco_term or cap.skill)
+            sid = m[0] if m else None
+        if sid is None:
+            continue
+        tier = evidence_tier(cap.source_type)
+        if sid not in out or rank[tier] > rank[out[sid]]:
+            out[sid] = tier
+    return out
 
 
 def _resolve_candidate_esco_ids(
