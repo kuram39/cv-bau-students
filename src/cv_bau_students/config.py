@@ -34,21 +34,24 @@ LLM_MAX_TOKENS = 4096
 # thinking + ≥4000 for the JSON. Stays under the ~16K non-streaming threshold.
 LLM_THINK_MAX_TOKENS = 8000
 LLM_THINK_BUDGET = 4000  # thinking cap; must be < LLM_THINK_MAX_TOKENS (leaves ≥4000 for answer)
-# Master switch for extended thinking. OFF by default: thinking only refines the
-# *same* JSON outputs (its hidden blocks are discarded) at a ~2-3× latency cost,
-# so the demo runs fast. Flip to True (env CV_BAU_STUDENTS_THINK=1) for a
-# quality A/B — the per-call budget cap above still applies when on.
-LLM_THINK_ENABLED = os.environ.get("CV_BAU_STUDENTS_THINK", "0") == "1"
+# Master switch for extended thinking on the 2 interpretive calls (translate,
+# reason). ON by default: the budget-overflow bug (PR #17) is fixed, so thinking
+# is safe, and at demo volume (~tens of calls) the latency cost is acceptable for
+# the quality gain. Set CV_BAU_STUDENTS_THINK=0 to disable (fastest upload /
+# cost A-B). The per-call budget cap above bounds the thinking spend when on.
+LLM_THINK_ENABLED = os.environ.get("CV_BAU_STUDENTS_THINK", "1") != "0"
 
 # --- Pipeline budgets ---
 COMPLETION_MAX_ROUNDS = 2
 TRANSLATOR_CONFIDENCE_FLOOR = 0.3  # drop below this from scoring inputs
 HIGH_CONFIDENCE_THRESHOLD = 0.7
 
-# --- Matcher weights (sum = 1.0) ---
+# --- Matcher weights — UNUSED since PR #20 (total = skill_fit directly) ---
+# Kept for reference / future multi-axis mode. Do NOT import these in
+# score.py without updating the scoring formula and this comment.
 WEIGHT_SKILL_FIT = 0.45
 WEIGHT_BRIDGE_FIT = 0.35
-WEIGHT_PERSONAL_FIT = 0.20
+WEIGHT_PERSONAL_FIT = 0.20  # personal_fit retired; value 0.0 hard-coded
 
 # --- ESCO target-role enrichment (skill_fit) ---
 # When an ad resolves to an ISCO occupation, skill_fit gets a capped bonus

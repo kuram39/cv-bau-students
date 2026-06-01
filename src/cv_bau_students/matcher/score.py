@@ -1,15 +1,14 @@
-"""3-axis matcher — skill_fit + bridge_fit + personal_fit.
+"""Candidate–ad scorer: skill coverage headline + bridge-fit secondary signal.
 
-- Skill fit: % of the ad's must_have + nice_to_have covered by the
-  candidate's translated capabilities (via the taxonomy + hierarchy).
-- Bridge fit: per-cell gap distance from the ad's (domain, level)
-  checklist. Bridgeable months scale the score; experience-only gaps
-  cap the score so a junior cannot "bridge" a senior position.
-- Personal fit: text-overlap proxy between the candidate's summary +
-  target_domains and the ad's raw_text. Replaced with an LLM call in
-  later iterations; the proxy is good enough for the demo.
+- Skill fit (headline, 0–100 %): coverage of the recruiter's curated target
+  skill set (ESCO ids from the skill-picker), or the ad's must_have ∪
+  nice_to_have if no curation exists. `total == skill_fit`.
+- Bridge fit (secondary): how bridgeable the level/domain gaps are. Shown
+  beside the headline as a "potential/growth" signal; NOT folded into total.
+- Personal fit: retired from the product after PR #20 (was a weak lexical
+  proxy). Schema field kept at 0.0; remove after a DB migration cycle.
 
-Output: `MatchScore` per ad with weighted total + confidence band.
+Output: `MatchScore` per ad with headline % + confidence band.
 Higher-confidence translated capabilities collapse the band; thin
 profiles widen it.
 """
