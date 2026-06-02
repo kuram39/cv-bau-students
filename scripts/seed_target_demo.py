@@ -111,6 +111,10 @@ def _modify_target_ad(ad) -> None:
         ad.id,
         employer=DEMO_EMPLOYER,
         raw_text=DEMO_RAW_TEXT,
+        # Scrape classified the ad as "general"; align it with the
+        # data-analyst level_checklists rubric so bridge_fit computes
+        # (instead of the -1.0 / "N/A" sentinel for an uncovered domain).
+        domain="data-analyst",
         must_have=DEMO_MUST_HAVE,
         nice_to_have=DEMO_NICE_TO_HAVE,
         languages_required=DEMO_LANGUAGES,
