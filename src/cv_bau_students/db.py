@@ -82,21 +82,35 @@ def _migrate_columns() -> None:
     on Postgres (no table rewrite).
     """
     from sqlalchemy import inspect, text
+    from sqlalchemy.exc import DBAPIError
 
     engine = _engine()
+    is_pg = engine.dialect.name == "postgresql"
     inspector = inspect(engine)
-    with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            if not inspector.has_table(table.name):
-                continue  # table absent → create_all already built it fresh
-            existing = {c["name"] for c in inspector.get_columns(table.name)}
-            for col in table.columns:
-                if col.name in existing:
-                    continue
-                if not col.nullable and col.default is None and col.server_default is None:
-                    continue  # unsafe to add NOT NULL without a default
-                coltype = col.type.compile(dialect=engine.dialect)
-                conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {coltype}'))
+    for table in Base.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue  # table absent → create_all already built it fresh
+        existing = {c["name"] for c in inspector.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in existing:
+                continue
+            if not col.nullable and col.default is None and col.server_default is None:
+                continue  # unsafe to add NOT NULL without a default
+            coltype = col.type.compile(dialect=engine.dialect)
+            # IDEMPOTENT: Postgres `IF NOT EXISTS` so a stale/cached reflection that
+            # wrongly reports the column as missing can't crash the boot with
+            # DuplicateColumn. Each ALTER runs in its OWN transaction so one failure
+            # can't poison the rest (a Postgres aborted tx kills all later DDL).
+            if_not_exists = "IF NOT EXISTS " if is_pg else ""
+            ddl = f'ALTER TABLE "{table.name}" ADD COLUMN {if_not_exists}"{col.name}" {coltype}'
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
+            except DBAPIError as exc:
+                msg = str(exc).lower()
+                if "exist" in msg or "duplicate" in msg:
+                    continue  # already added (race / stale reflection) — safe to skip
+                raise
 
 
 def drop_db() -> None:
