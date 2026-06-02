@@ -89,12 +89,25 @@ def _render_audit(ad_id: int) -> None:
     DISCLOSURE metric, not a pass/fail bar — the demo collects no protected
     attributes, so this is auditability-by-design, not an adverse-impact audit."""
     with st.expander("📊 Audit — doložitelnost skóre napříč typy kandidátů"):
-        report = audit_by_type(ad_id)
+        thr = st.slider(
+            "Práh výběru — od jakého skóre beru kandidáta jako vybraného (%)",
+            min_value=0,
+            max_value=100,
+            value=50,
+            step=5,
+            key=f"audit_thr_{ad_id}",
+            help=(
+                "Jen pomocný práh pro férovostní porovnání skupin, NE rozhodovací "
+                "hranice. Nízký práh = projdou skoro všichni → audit nic nerozliší; "
+                "posuň výš, ať se skupiny oddělí a poměr výběru začne mít smysl."
+            ),
+        )
+        report = audit_by_type(ad_id, threshold=float(thr))
         if not report["total"]:
             st.caption("Zatím žádní kandidáti k auditu.")
             return
         st.caption(
-            f"Výběr = skóre ≥ {report['threshold']:.0f} %. "
+            f"Výběr = skóre ≥ **{report['threshold']:.0f} %** (posuvník výše). "
             "Metrika transparentnosti, ne automatické rozhodnutí (viz `docs/MODEL_CARD.md`)."
         )
         rows = [
@@ -108,6 +121,16 @@ def _render_audit(ad_id: int) -> None:
             for g, row in report["groups"].items()
         ]
         st.table(rows)
+        rates = [
+            r["selection_rate"]
+            for r in report["groups"].values()
+            if r["selection_rate"] is not None
+        ]
+        if rates and all(r == 1.0 for r in rates):
+            st.caption(
+                "ℹ️ Při tomto prahu projdou **všichni** → audit nic nerozliší. "
+                "Posuň práh výš, ať se skupiny oddělí."
+            )
         ratio = report["four_fifths_ratio"]
         if ratio is not None:
             msg = f"Four-fifths poměr: **{ratio}**"
