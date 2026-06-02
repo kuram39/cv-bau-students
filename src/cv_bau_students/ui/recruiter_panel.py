@@ -12,15 +12,11 @@ from __future__ import annotations
 import streamlit as st
 
 from cv_bau_students.candidates import repo as candidates_repo
-from cv_bau_students.evidence import TIER_EMOJI
+from cv_bau_students.evidence import TIER_EMOJI, doloznost_label
 from cv_bau_students.explanation.format import parse_reasoning
 from cv_bau_students.jobads import repo as jobads_repo
 from cv_bau_students.matcher.score import counterfactual_lifts
 from cv_bau_students.models import JobAd
-
-# confidence_band > this ⇒ avg translator confidence < ~0.5 (band = 30 − 25·avg),
-# i.e. the coverage % rests on thin/low-confidence evidence → flag it.
-_LOW_DOLOZNOST_BAND = 18.0
 
 TYPE_BADGE = {
     "student": "📚 Student",
@@ -241,10 +237,17 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
     bridge_display = f"{m.bridge_fit:.0f}" if m.bridge_fit >= 0 else "N/A"
     c2.metric("Bridge fit (potenciál)", bridge_display)
 
-    # Honest precision (research #8): when the coverage rests on thin/low-confidence
-    # evidence, flag it as orientational instead of showing a falsely precise %.
-    if m.confidence_band > _LOW_DOLOZNOST_BAND:
-        st.warning("⚠️ Nízká doloženost — skóre je orientační, opři rozhodnutí o důkazy níže.")
+    # Honest precision (research #8): when the matched skills are mostly *claimed*
+    # (weak evidence) rather than demonstrated, flag the coverage as orientational.
+    # Driven by evidence strength (source_type tiers) — the product's doloženost
+    # concept — NOT translator confidence (evidence.py keeps these distinct).
+    matched_evidence = getattr(m.skill_fit_detail, "matched_evidence", None) or []
+    if matched_evidence and doloznost_label([t for _, t in matched_evidence]) == "nízká":
+        st.warning(
+            "⚠️ Nízká doloženost — pokryté dovednosti jsou převážně jen uvedené "
+            "(ne prokázané praxí/projektem). Skóre ber jako orientační, opři "
+            "rozhodnutí o důkazy níže."
+        )
 
     _render_skill_fit_detail(m.skill_fit_detail)
     st.caption(
