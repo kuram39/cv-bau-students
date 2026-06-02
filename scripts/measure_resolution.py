@@ -42,7 +42,17 @@ def _is_czechish(phrase: str) -> bool:
 
 
 def _resolves(phrase: str) -> bool:
+    """Resolves in EITHER namespace — for the 'does this phrase land anywhere' raw
+    signal (the alias/embeddings decision)."""
     return resolve_skill(phrase) is not None or resolve_skill_esco(phrase) is not None
+
+
+def _resolves_esco(phrase: str) -> bool:
+    """ESCO-only — mirrors the runtime path: the translator stores an
+    `esco_skill_id` from `resolve_skill_esco(esco_term or skill)` (translate.py
+    `_link_to_esco`), and the matcher scores in ESCO space. A seed-only hit does
+    NOT give the matcher a usable id, so it must not count as runtime coverage."""
+    return resolve_skill_esco(phrase) is not None
 
 
 def collect_rows(db_url: str | None = None) -> list[tuple[str, str | None]]:
@@ -63,12 +73,15 @@ def collect_rows(db_url: str | None = None) -> list[tuple[str, str | None]]:
 def summarize(rows: list[tuple[str, str | None]]) -> dict:
     """Resolution stats over capability rows. Pure — easy to unit-test.
 
-    `runtime_*` resolves `esco_term or skill_canonical` per row (what the matcher
-    does); `raw_*` resolves the distinct `skill_canonical` display phrases (where
-    Czech lives) and reports the detectable-Czech subset + the unresolved tail."""
-    # Runtime-effective: one value per capability row, esco_term preferred.
-    runtime_phrases = {(e.strip() if e and e.strip() else c.strip()) for c, e in rows}
-    runtime_resolved = {p for p in runtime_phrases if _resolves(p)}
+    `runtime_*` mirrors the matcher: one value PER ROW (`esco_term or
+    skill_canonical`), resolved via the ESCO namespace only (seed-only hits give
+    the matcher no id). `raw_*` resolves the distinct `skill_canonical` display
+    phrases (where Czech lives) and reports the detectable-Czech subset + tail."""
+    # Runtime-effective: count per capability row (NOT deduped — dup capabilities
+    # across candidates each cost a resolution at runtime), esco_term preferred,
+    # ESCO-only resolution.
+    runtime_phrases = [(e.strip() if e and e.strip() else c.strip()) for c, e in rows]
+    runtime_resolved = sum(1 for p in runtime_phrases if _resolves_esco(p))
 
     # Raw display phrases (skill_canonical only).
     raw = sorted({c.strip() for c, _ in rows})
@@ -83,8 +96,8 @@ def summarize(rows: list[tuple[str, str | None]]) -> dict:
     return {
         "rows": len(rows),
         "runtime_total": len(runtime_phrases),
-        "runtime_resolved": len(runtime_resolved),
-        "runtime_pct": pct(len(runtime_resolved), len(runtime_phrases)),
+        "runtime_resolved": runtime_resolved,
+        "runtime_pct": pct(runtime_resolved, len(runtime_phrases)),
         "raw_total": len(raw),
         "raw_resolved": len(raw_resolved),
         "raw_pct": pct(len(raw_resolved), len(raw)),

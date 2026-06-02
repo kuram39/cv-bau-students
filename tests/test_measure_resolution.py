@@ -9,30 +9,33 @@ from __future__ import annotations
 import scripts.measure_resolution as mr
 
 
-def test_summarize_runtime_prefers_esco_term(monkeypatch):
-    # Only English ESCO terms resolve here.
-    resolvable = {"SQL", "data modelling", "Python"}
-    monkeypatch.setattr(mr, "resolve_skill", lambda p: (1, p) if p in resolvable else None)
-    monkeypatch.setattr(mr, "resolve_skill_esco", lambda p: None)
+def test_summarize_runtime_is_esco_only_and_per_row(monkeypatch):
+    # ESCO (runtime) resolves the English terms; seed resolves only "SQL".
+    monkeypatch.setattr(mr, "resolve_skill", lambda p: (1, p) if p == "SQL" else None)
+    monkeypatch.setattr(
+        mr,
+        "resolve_skill_esco",
+        lambda p: (2, p) if p in {"SQL", "data modelling", "Python"} else None,
+    )
 
     rows = [
-        ("SQL", None),  # resolves on canonical
-        ("datové modelování", "data modelling"),  # canonical fails, esco_term wins
+        ("SQL", None),  # runtime "SQL" → ESCO ✓
+        ("SQL", None),  # duplicate capability → counts AGAIN per row
+        ("datové modelování", "data modelling"),  # runtime esco_term ✓ (raw fails)
         ("dolování dat", None),  # czech, unresolved
-        ("Python analysis", "Python"),  # ascii canonical; esco_term resolves
+        ("Python analysis", "Python"),  # runtime esco_term ✓ (raw fails)
     ]
     s = mr.summarize(rows)
 
-    # runtime = {SQL, data modelling, dolování dat, Python} → 3/4 resolve.
-    assert s["runtime_total"] == 4
-    assert s["runtime_resolved"] == 3
-    assert s["runtime_pct"] == 75.0
-    # raw skill_canonical = {SQL, datové modelování, dolování dat, Python pro analýzu}
-    # only SQL resolves raw → 1/4.
+    # runtime = per ROW (5), ESCO-only: SQL, SQL, data modelling, Python = 4/5.
+    assert s["runtime_total"] == 5
+    assert s["runtime_resolved"] == 4
+    assert s["runtime_pct"] == 80.0
+    # raw distinct skill_canonical = 4; only SQL resolves (seed OR esco) → 1/4.
     assert s["raw_total"] == 4
     assert s["raw_resolved"] == 1
     assert s["raw_pct"] == 25.0
-    # detectable-Czech raw phrases: datové modelování, dolování dat → 2; 0 resolve raw.
+    # detectable-Czech raw phrases: datové modelování, dolování dat → 2; 0 resolve.
     assert s["czech_total"] == 2
     assert s["czech_resolved"] == 0
     assert s["czech_pct"] == 0.0
