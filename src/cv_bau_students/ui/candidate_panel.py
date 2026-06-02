@@ -17,6 +17,7 @@ from __future__ import annotations
 import streamlit as st
 
 from cv_bau_students.matcher.hard_filter import hard_filter_reasons
+from cv_bau_students.matcher.score import counterfactual_lifts
 from cv_bau_students.models import GenericResult, InterestResult, JobAd
 from cv_bau_students.pipeline import (
     express_interest,
@@ -153,6 +154,12 @@ def _step_matches() -> None:
         st.markdown(f"**{ad.title}** — {ad.employer or '—'} · {ad.location} · {ad.level}")
         if target_match is not None:
             st.caption(_match_reasoning_line(target_match))
+            # Forward-looking recourse (AI Act Art. 86, research #8): WHICH skills
+            # to demonstrate to fit better — names only, no score/ranking.
+            lifts = counterfactual_lifts(getattr(target_match, "skill_fit_detail", None), cap=3)
+            if lifts:
+                skills = ", ".join(skill for skill, _cur, _new in lifts)
+                st.info(f"💡 Co doložit pro vyšší shodu: **{skills}** (např. projektem či praxí).")
         if ko_reasons:
             st.error(
                 "Nesplňuješ tvrdé požadavky pozice (jazyková úroveň): "

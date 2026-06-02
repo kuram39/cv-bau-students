@@ -145,6 +145,35 @@ def _skill_fit(
     return coverage, detail
 
 
+def counterfactual_lifts(
+    detail: SkillFitDetail | None, *, cap: int = 5
+) -> list[tuple[str, int, int]]:
+    """Actionable recourse: for each currently-missing target skill, what the
+    coverage % would become if the candidate *evidenced* that one skill.
+
+    Returns ``[(skill_name, current_pct, new_pct), …]`` (≤ ``cap`` items).
+    Pure arithmetic from the existing ``SkillFitDetail`` counts — no re-score,
+    no LLM. This is the GDPR/CJEU-endorsed counterfactual explanation (research
+    #8) and doubles as the candidate's "what to demonstrate next".
+
+    NB: every missing skill adds exactly one to the numerator, so the new % is
+    the same for each — but we pair it per-skill so the UI can render concrete
+    "Doložit «X» → N% → M%" lines. Kept deliberately simple so swapping in a
+    plain "reason-codes" list (the contested alternative in #8) is cheap.
+    """
+    if detail is None:
+        return []
+    total = detail.role_essential_total
+    if total <= 0:
+        return []
+    evidenced = detail.role_essential_evidenced
+    if evidenced >= total:
+        return []  # full coverage — nothing to recommend
+    current = round(100.0 * evidenced / total)
+    new = round(100.0 * (evidenced + 1) / total)
+    return [(skill, current, new) for skill in detail.role_essential_missing[:cap]]
+
+
 def _evidence_tier_by_id(capabilities: list[TranslatedCapability]) -> dict[int, str]:
     """Strongest evidence tier per resolved skill id across all capabilities.
 
