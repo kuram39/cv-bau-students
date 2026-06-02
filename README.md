@@ -3,12 +3,23 @@
 > Anglická referenční verze: [`docs/README.en.md`](docs/README.en.md) ·
 > technický hloubkový popis (diagramy, scoring, file\:line): [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
+> **Hlavní myšlenka v jedné větě.**
+> Přelož CV bez praxe na dovednosti → změř, jaké **% náborářem vybrané cílové
+> sady dovedností** kandidát pokrývá → ukaž to transparentně.
+>
+> Skóre je **deterministické** — do samotného výpočtu žádný LLM nevstupuje; LLM
+> jen **extrahuje, překládá a vysvětluje**. Z toho plyne všechno ostatní: místo
+> „let praxe" měříme **„% pokrytí dovedností"**, takže **student i senior stojí
+> na stejné ose**.
+
 ## Co to je
 
 AI platforma, která **férově porovná studenty, absolventy a kariérní změny
 s pracovními inzeráty** — na základě **dovedností, ne let praxe**. CV bez
 „odpracovaných let" převede na dovednosti a ukáže náboráři, do jaké míry kandidát
-pokrývá to, co pozice opravdu vyžaduje.
+pokrývá to, co pozice opravdu vyžaduje. Drahý jazykový model přitom CV jen
+**přečte a přeloží na dovednosti**; **porovnání i skóre jsou deterministické** —
+levné, okamžité a reprodukovatelné.
 
 ## Jaký problém řeší
 
