@@ -29,7 +29,7 @@ from sqlalchemy import text
 
 from cv_bau_students import config
 from cv_bau_students.bootstrap import ensure_seeded
-from cv_bau_students.db import get_session, reset_engine_for_tests
+from cv_bau_students.db import get_session, init_db, reset_engine_for_tests
 from cv_bau_students.taxonomy.repo import resolve_skill, resolve_skill_esco
 
 # Czech-specific letters — a phrase carrying any of these is *detectably* Czech.
@@ -59,13 +59,16 @@ def _resolves_esco(phrase: str) -> bool:
 def collect_rows(db_url: str | None = None) -> list[tuple[str, str | None, int | None]]:
     """`(skill_canonical, esco_term, esco_skill_id)` rows from translated_capabilities.
 
-    Restores the bundled demo seed (`ensure_seeded`) first so the default
-    invocation on a fresh checkout measures real data instead of an empty schema
-    (and a missing table can't 500). For an explicit populated `--source`, the
-    restore is a no-op."""
+    For the DEFAULT DB, restore the bundled demo seed (`ensure_seeded`) so a fresh
+    checkout measures real data instead of an empty schema. For an explicit
+    `--source`, only `init_db()` (create/migrate tables) — NEVER `ensure_seeded`,
+    because `_restore_from_seed_snapshot` overwrites a SQLite file ≤64 KiB and
+    would clobber a small user-supplied DB with the bundled seed."""
     if db_url:
         reset_engine_for_tests(db_url)  # public reset; also used by the test conftest
-    ensure_seeded()  # restore seed.sqlite.gz if empty + create/migrate tables
+        init_db()  # tables only — do NOT snapshot-restore over an explicit source
+    else:
+        ensure_seeded()  # default DB: restore seed.sqlite.gz if empty + create/migrate
     with get_session() as session:
         rows = session.execute(
             text("SELECT skill_canonical, esco_term, esco_skill_id FROM translated_capabilities")
@@ -138,8 +141,12 @@ def main() -> int:
     print(f"Source: {args.source or config.DB_URL}")
     print(f"Capability rows: {s['rows']}")
     print(
-        f"  runtime-effective (esco_term or skill): "
+        f"  runtime-effective (translated_capabilities only): "
         f"{s['runtime_resolved']}/{s['runtime_total']}  ({s['runtime_pct']} %)"
+    )
+    print(
+        "    (NB excludes CandidateProfile.explicit_skills, which the matcher also "
+        "credits — so this is a lower bound on true runtime coverage.)"
     )
     print(
         f"  raw skill_canonical only:               "
