@@ -105,7 +105,14 @@ DEMO_RAW_TEXT = (
 def _modify_target_ad(ad) -> None:
     """Turn the scraped row into the demo target — idempotent."""
     if ad.employer == DEMO_EMPLOYER:
-        print(f"  target ad {ad.id} already prepared — skipping modify.")
+        # Already prepared by an earlier run. Still realign the domain: a DB
+        # prepared before the domain fix kept domain="general" (no rubric →
+        # bridge_fit N/A), and the full modify is skipped here.
+        if ad.domain != "data-analyst":
+            set_ad_fields_and_skills(ad.id, domain="data-analyst")
+            print(f"  target ad {ad.id} already prepared — realigned domain → data-analyst.")
+        else:
+            print(f"  target ad {ad.id} already prepared — skipping modify.")
         return
     set_ad_fields_and_skills(
         ad.id,
