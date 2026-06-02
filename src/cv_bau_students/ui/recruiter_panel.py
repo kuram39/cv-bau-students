@@ -265,6 +265,21 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
             )
             st.caption(f"• {gap.skill} — {when}")
 
+    if detail.capabilities:
+        st.markdown("**Přeložené schopnosti:**")
+        for cap in detail.capabilities[:8]:
+            caveat = f" — _{cap.caveat}_" if cap.caveat else ""
+            st.caption(
+                f"• **{cap.skill}** ({cap.confidence:.0%}, {cap.source_type}): "
+                f"„{cap.evidence_quote}“{caveat}"
+            )
+
+    # AI verdict directly under the score breakdown + capabilities it reasons over.
+    if m.reasoning:
+        _render_reasoning(m.reasoning)
+
+    # The candidate's own questionnaire answers sit at the end — supporting
+    # detail the recruiter reads after the verdict, just above the raw sources.
     if detail.role_answers:
         st.markdown("**Odpovědi na otázky k pozici:**")
         for a in detail.role_answers:
@@ -275,18 +290,6 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
             else:
                 tag = "✍️ vlastní"
             st.markdown(f"_{a.question_text}_  \n{a.answer_text}  \n`{tag}`")
-
-    if detail.capabilities:
-        st.markdown("**Přeložené schopnosti:**")
-        for cap in detail.capabilities[:8]:
-            caveat = f" — _{cap.caveat}_" if cap.caveat else ""
-            st.caption(
-                f"• **{cap.skill}** ({cap.confidence:.0%}, {cap.source_type}): "
-                f"„{cap.evidence_quote}“{caveat}"
-            )
-
-    if m.reasoning:
-        _render_reasoning(m.reasoning)
 
     if detail.raw_cv_text:
         with st.expander("📄 Původní CV (raw text)"):
