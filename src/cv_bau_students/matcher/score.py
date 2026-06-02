@@ -244,6 +244,22 @@ def _bridge_fit(gaps: list[GapItem], *, has_rubric: bool) -> float | None:
     return max(0.0, 100.0 - (total_months / 24.0) * 100.0)
 
 
+def bridge_estimate(gaps: list[GapItem]) -> dict:
+    """Human-graspable form of bridge_fit: how long to ready this candidate for
+    the ad. Sums the per-gap `bridgeable_in_months`; gaps with no estimate
+    (`bridgeable_in_months is None`) are the experience-only walls that no course
+    or project shortcuts. Pure — derived from the stored bridge_plan."""
+    months = sum(g.bridgeable_in_months or 0 for g in gaps if g.bridgeable_in_months is not None)
+    bridgeable = sum(1 for g in gaps if g.bridgeable_in_months is not None)
+    experience_only = sum(1 for g in gaps if g.bridgeable_in_months is None)
+    return {
+        "months": months,
+        "bridgeable": bridgeable,
+        "experience_only": experience_only,
+        "gaps": len(gaps),
+    }
+
+
 def _confidence_band(capabilities: list[TranslatedCapability]) -> float:
     """Wider band when the average translator confidence is low.
 
