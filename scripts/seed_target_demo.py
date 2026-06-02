@@ -105,12 +105,23 @@ DEMO_RAW_TEXT = (
 def _modify_target_ad(ad) -> None:
     """Turn the scraped row into the demo target — idempotent."""
     if ad.employer == DEMO_EMPLOYER:
-        print(f"  target ad {ad.id} already prepared — skipping modify.")
+        # Already prepared by an earlier run. Still realign the domain: a DB
+        # prepared before the domain fix kept domain="general" (no rubric →
+        # bridge_fit N/A), and the full modify is skipped here.
+        if ad.domain != "data-analyst":
+            set_ad_fields_and_skills(ad.id, domain="data-analyst")
+            print(f"  target ad {ad.id} already prepared — realigned domain → data-analyst.")
+        else:
+            print(f"  target ad {ad.id} already prepared — skipping modify.")
         return
     set_ad_fields_and_skills(
         ad.id,
         employer=DEMO_EMPLOYER,
         raw_text=DEMO_RAW_TEXT,
+        # Scrape classified the ad as "general"; align it with the
+        # data-analyst level_checklists rubric so bridge_fit computes
+        # (instead of the -1.0 / "N/A" sentinel for an uncovered domain).
+        domain="data-analyst",
         must_have=DEMO_MUST_HAVE,
         nice_to_have=DEMO_NICE_TO_HAVE,
         languages_required=DEMO_LANGUAGES,

@@ -77,6 +77,7 @@ def set_ad_fields_and_skills(
     *,
     employer: str | None = None,
     raw_text: str | None = None,
+    domain: str | None = None,
     must_have: list[str] | None = None,
     nice_to_have: list[str] | None = None,
     languages_required: list[LanguageRequirement] | None = None,
@@ -99,6 +100,8 @@ def set_ad_fields_and_skills(
             row.employer = employer
         if raw_text is not None:
             row.raw_text = raw_text
+        if domain is not None:
+            row.domain = domain
         if isco_code is not None:
             row.isco_code = isco_code
         if isco_occupation_label is not None:

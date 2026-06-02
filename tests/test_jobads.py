@@ -9,6 +9,7 @@ from cv_bau_students.jobads.repo import (
     get_ad_by_id,
     get_target_skills,
     list_ads,
+    set_ad_fields_and_skills,
     set_ad_isco,
     set_target_skills,
     store_ad,
@@ -218,3 +219,13 @@ def test_languages_round_trip():
     fetched = list_ads()[0]
     assert fetched.languages_required[0].language == "English"
     assert fetched.languages_required[0].min_level == "B2"
+
+
+def test_set_ad_fields_updates_domain():
+    """set_ad_fields_and_skills can realign the ad's domain (so the demo target,
+    scraped as 'general', maps onto the data-analyst level_checklists rubric and
+    bridge_fit computes instead of returning the N/A sentinel)."""
+    _seed_taxonomy()
+    ad_id = store_ad(_example_ad().model_copy(update={"domain": "general"}))
+    set_ad_fields_and_skills(ad_id, domain="data-analyst")
+    assert get_ad_by_id(ad_id).domain == "data-analyst"
