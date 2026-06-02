@@ -56,6 +56,21 @@ def test_migrate_columns_adds_missing_column():
     assert "raw_text" not in cols
 
 
+def test_migrate_columns_is_idempotent():
+    """Running the migration twice must not raise (each ALTER is guarded /
+    IF NOT EXISTS on Postgres) — guards the prod boot against a stale reflection
+    that re-tries an already-added column."""
+    engine = _engine()
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE job_ads"))
+        conn.execute(text("CREATE TABLE job_ads (id INTEGER PRIMARY KEY, title TEXT)"))
+    _migrate_columns()
+    _migrate_columns()  # second pass — must be a safe no-op, not a crash
+    with engine.begin() as conn:
+        cols = {r[1] for r in conn.execute(text("PRAGMA table_info('job_ads')"))}
+    assert "isco_code" in cols
+
+
 def test_load_seeds_populates_taxonomy_and_checklists():
     """Run the loader against the in-memory DB; verify row counts."""
     with get_session() as session:
