@@ -40,6 +40,13 @@ LLM_TIER_MECHANICAL = os.environ.get("CV_BAU_STUDENTS_TIER", "0") == "1"
 # NOT applied to the extended-thinking calls (forced tool-use + thinking has SDK
 # rough edges — those keep the text+parse path).
 LLM_STRUCTURED = os.environ.get("CV_BAU_STUDENTS_STRUCTURED", "0") == "1"
+# Prompt caching (research #7): a call may pass a static `cache_prefix` sent as a
+# cache_control:ephemeral block before the variable suffix, so the repeated
+# instruction body is billed at 0.1× on cache hits. OFF by default; flip
+# CV_BAU_STUDENTS_CACHE=1 (owner measures usage.cache_read_input_tokens). Only the
+# extract prompt is cache-wired today (its template is static-first / {cv_text}
+# last); translate + reason need a template reorg first (vars are at the top).
+LLM_CACHE = os.environ.get("CV_BAU_STUDENTS_CACHE", "0") == "1"
 LLM_MAX_TOKENS = 4096
 # Thinking calls: max_tokens is the TOTAL budget shared by the (hidden) thinking
 # blocks and the JSON answer. With adaptive thinking at 8192 the model spent the

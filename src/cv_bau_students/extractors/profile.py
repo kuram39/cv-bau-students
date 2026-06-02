@@ -31,9 +31,17 @@ def extract_profile(cv_text: str, *, today: date | None = None) -> CandidateProf
         cv_text=cv_text,
         current_year=current_year,
     )
+    # Prompt caching: extract_profile.md is static-first (instructions/schema/
+    # examples) with the variable CV text in the trailing "## CV TEXT" section.
+    # Split there so the big static body is the cacheable prefix and only the CV
+    # varies per call. No-op unless CV_BAU_STUDENTS_CACHE=1.
+    static, marker, variable = prompt.partition("## CV TEXT")
+    cache_prefix = static if marker else None
+    suffix = (marker + variable) if marker else prompt
     payload = llm.call_json(
-        prompt,
+        suffix,
         model=llm.mechanical_model(),
         schema=CandidateProfile.model_json_schema(),
+        cache_prefix=cache_prefix,
     )
     return CandidateProfile.model_validate(payload)

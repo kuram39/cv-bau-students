@@ -176,6 +176,39 @@ def test_structured_skipped_for_thinking_calls():
     assert "thinking" in kwargs
 
 
+def test_cache_prefix_ignored_when_flag_off():
+    from cv_bau_students import config
+
+    client = _patched_client(_fake_message(text="{}"))
+    with (
+        patch.object(llm, "_client", return_value=client),
+        patch.object(config, "LLM_CACHE", False),
+    ):
+        llm.call_json("variable", cache_prefix="static body")
+    _, kwargs = client.messages.create.call_args
+    # Plain string content — no cache_control block.
+    assert kwargs["messages"][0]["content"] == "variable"
+
+
+def test_cache_prefix_builds_ephemeral_block_when_on():
+    from cv_bau_students import config
+
+    client = _patched_client(_fake_message(text="{}"))
+    with (
+        patch.object(llm, "_client", return_value=client),
+        patch.object(config, "LLM_CACHE", True),
+    ):
+        llm.call_json("variable", cache_prefix="static body")
+    _, kwargs = client.messages.create.call_args
+    content = kwargs["messages"][0]["content"]
+    assert content[0] == {
+        "type": "text",
+        "text": "static body",
+        "cache_control": {"type": "ephemeral"},
+    }
+    assert content[1] == {"type": "text", "text": "variable"}
+
+
 def test_no_text_block_raises_diagnostic_error():
     """Response with no text block → error names stop_reason + block types,
     not an empty 'First 500 chars' blank."""
