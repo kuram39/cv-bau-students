@@ -1,199 +1,190 @@
 # cv-bau-students
 
-Round-2 AI matching platform for **students / fresh-graduates / career-changers**.
-It translates CVs *without* years of work history — school projects, thesis work,
-brigády, courses, prior-domain achievements — into "experienced-equivalent"
-capabilities, then scores every candidate on **skill coverage of one target job
-ad** so a recruiter can compare a student and an experienced hire on the same,
-fair axis: skills, not tenure.
+> Anglická referenční verze: [`docs/README.en.md`](docs/README.en.md) ·
+> technický hloubkový popis (diagramy, scoring, file\:line): [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
-Hybrid code-fork of the round-1 [`cv-estimator`](https://github.com/buhlez31/cv-estimator)
-(shared infra pattern: Pydantic contract, LLM wrapper, skepticism prompt,
-Streamlit scaffolding; disjoint product scope).
+> **Hlavní myšlenka v jedné větě.**
+> Přelož CV bez praxe na dovednosti → změř, jaké **% náborářem vybrané cílové
+> sady dovedností** kandidát pokrývá → ukaž to transparentně.
+>
+> Skóre je **deterministické** — do samotného výpočtu žádný LLM nevstupuje; LLM
+> jen **extrahuje, překládá a vysvětluje**. Z toho plyne všechno ostatní: místo
+> „let praxe" měříme **„% pokrytí dovedností"**, takže **student i senior stojí
+> na stejné ose**.
 
-## TL;DR
+## Co to je
 
-- **Single-target MVP.** One pre-selected job ad ("Datový analytik"). Every
-  uploaded CV is matched against *that* ad only; the recruiter curates the
-  target skill set and everyone is scored on coverage of it.
-- **Score = skill coverage (criterion-referenced).** `skill_fit` = % of the
-  recruiter's curated target skill set the candidate evidences; `total ==
-  skill_fit`. **`bridge_fit`** is a *separate* "potential / growth" signal
-  (how bridgeable the level gaps are), shown beside the headline — never folded
-  in. `personal_fit` is retired. Grounded in I/O research: tenure barely
-  predicts performance, so we score demonstrated skills, not years.
-- **Doloženost (evidence strength).** Each matched skill is tagged by *how* it
-  was demonstrated — 🟢 work/internship/cert · 🟡 project/thesis/course · ⚪
-  claimed-only — and aggregated into a "doloženost" reliability label. This
-  replaces the old LLM self-confidence band.
-- **Two-pass candidate journey.** `run_generic_pass` (extract + translate, ~2
-  LLM calls) → `express_interest` (AI questionnaire, surfaces hidden skills) →
-  `submit_role_specific` (re-translate with answers + 1 reasoning call). The
-  recruiter then sees a scored, evidence-tagged list with a per-candidate AI
-  verdict.
-- **Trust by design.** Skills-only scoring (no demographic features; extraction
-  blinds name/gender/age); transparency notices; human-in-the-loop (score is
-  decision-support, never auto-reject); audit trail (raw CV + breakdown). See
-  [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) (EU AI Act high-risk + GDPR Art. 22).
-- **Data layer.** 18-table SQLAlchemy schema. SQLite for local/dev (restored
-  from a bundled, role-scoped `seed.sqlite.gz`); **Postgres/Neon** for a
-  persistent deploy (uploaded CVs survive Streamlit Cloud restarts) — change one
-  DSN. See [`docs/DEPLOY.md`](docs/DEPLOY.md).
+AI platforma, která **férově porovná studenty, absolventy a kariérní změny
+s pracovními inzeráty** — na základě **dovedností, ne let praxe**. CV bez
+„odpracovaných let" převede na dovednosti a ukáže náboráři, do jaké míry kandidát
+pokrývá to, co pozice opravdu vyžaduje. Drahý jazykový model přitom CV jen
+**přečte a přeloží na dovednosti**; **porovnání i skóre jsou deterministické** —
+levné, okamžité a reprodukovatelné.
 
-## Run (local dev)
+## Jaký problém řeší
 
-```bash
-python3.11 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -e . --no-deps          # SSL-cert workaround in this env; or a .pth file
+Student nebo absolvent nemá „5 let praxe" — ale **má dovednosti**: ze školních
+projektů, diplomky, brigád, kurzů, předchozího oboru. Klasický nábor ho odmítne
+hned na prahu („nesplňuje roky praxe"), i když umí přesně to, co je potřeba.
 
-cp .env.example .env                # add ANTHROPIC_API_KEY (owner-run; agent key is scrubbed)
+Tahle platforma jeho zkušenost **přeloží na dovednosti srovnatelné s praxí**
+a porovná ji se zadáním zaměstnavatele na **jedné, společné, férové ose**:
+*kolik procent požadovaných dovedností kandidát doloží* — místo *kolik má let*.
+Student a zkušený uchazeč tak stojí na stejné stupnici.
 
-# Restore the bundled role-scoped seed (ESCO data-role skills + the demo ad)
-python -c "from cv_bau_students.bootstrap import ensure_seeded; ensure_seeded()"
+## Přednosti projektu
 
-# Seed the demo: prepare the target ad + walk the 6 synthetic CVs (~LLM calls)
-python -m scripts.seed_target_demo
+- **Férová osa.** Skóre = **% pokrytí požadovaných dovedností**, ne roky praxe.
+  Junior i senior se měří stejně.
+- **Doloženost.** U každé dovednosti je vidět, **čím je podložená** — praxí,
+  projektem, nebo jen uvedená v CV. Odolné vůči nafukování životopisů.
+- **Transparentnost a soulad.** Skóre je **podpora rozhodnutí, ne automatické
+  odmítnutí**; hodnotí se **dovednosti, ne osobní údaje**; je tu auditní stopa
+  a rámec EU AI Act / GDPR (viz [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md)).
+- **Levné a škálovatelné hledání.** Drahý jazykový model (LLM) převede CV na
+  profil **jen jednou**; samotné hledání nejlepší pozice je **deterministické,
+  bez LLM** — proto je levné i pro tisíce inzerátů.
 
-pytest -q                           # 192 tests, in-memory SQLite, no network
-streamlit run src/cv_bau_students/ui/app.py
-```
+## Dvě role v aplikaci
 
-Two-tab Streamlit: **Kandidát** (upload CV → see the position detail → express
-interest → answer 3 role questions) and **Recruiter** (curate target skills →
-scored candidate list with coverage % + doloženost + drill-in).
+Aplikace má dvě záložky — dva pohledy na tentýž proces:
 
-## Pipeline (two-pass)
+| Role | Co dělá | Co vidí |
+|---|---|---|
+| **Zájemce** (kandidát) | nahraje CV, prohlédne si pozici, vyjádří zájem, odpoví na pár otázek | **skóre NEvidí** — vidí jen dopředu hledící doporučení „co doložit, aby seděl líp" |
+| **Recruiter** | kurátoruje cílové dovednosti pozice, prochází kandidáty | seřazený seznam s **% pokrytí + doložeností + AI verdiktem** a možností rozhodnutí přepsat |
+
+## Jak to funguje (přehled)
+
+Celý proces na jednom obrázku. 🧠 = krok s jazykovým modelem (drahý, běží **jednou**),
+⚙️ = deterministický krok (bez LLM, **zdarma a opakovatelný**).
+
+[![Proces cv-bau-students — poster (klikni pro PDF)](docs/process-poster.png)](docs/process-poster.pdf)
+
+<sub>📄 Verze pro slidy / tisk: [PDF](docs/process-poster.pdf) · [PNG](docs/process-poster.png).</sub>
+
+<details>
+<summary>Textová (GitHub-native) verze diagramu</summary>
 
 ```mermaid
-flowchart TB
-    Upload[CV upload] --> Doc[document.extract_text + language]
-    Doc --> LLM1[LLM #1 extract_profile.md<br/>blind to demographics]
-    LLM1 --> Detector[Python detector classify.py<br/>vs the TARGET AD — overrides LLM tag]
-    Detector --> LLM2[LLM #2 translate_capabilities.md<br/>+ ESCO esco_term + skill_id]
-    LLM2 --> Persist[persist candidate + capabilities]
-    Persist --> Interest{Mám zájem?}
-    Interest -->|yes| Q[ensure_role_specific_questions<br/>AI questionnaire — generated once/ad]
-    Q --> Submit[submit_role_specific<br/>fold answers → re-translate → score]
-    Submit --> Score[matcher.score<br/>skill_fit = coverage of curated target set<br/>+ bridge_fit potential + matched_evidence]
-    Score --> Reason[LLM #3 reasoning.md<br/>verdict, evidenced > claimed]
-    Reason --> Recruiter[Recruiter view:<br/>coverage % · doloženost · drill-in]
+flowchart LR
+    U([CV]) --> P["🧠 CV → dovednosti"] --> C["⚙️ klasifikace typu"] --> Q["🧠 AI dotazník"] --> S["⚙️ skórování<br/>pokrytí·doloženost·bridge"] --> RE["🧠 verdikt"] --> DB[("uložení")]
+    DB --> K["⚙️ náborář:<br/>cílové dovednosti"] -->|"↻ zdarma"| RS["⚙️ přepočet všech"] --> L(["seznam · drill-in · dohled"])
+    classDef llm fill:#e8f0fe,stroke:#1b4f9c,color:#14181f;
+    classDef det fill:#e7f3ea,stroke:#2f7d4f,color:#14181f;
+    class P,Q,RE llm;
+    class C,S,RS det;
 ```
 
-LLM calls: **upload ≈ 2** (extract + translate); **interest** = questions once
-per ad (cached); **submit** ≈ 1 (reason; translate cached). Extended thinking is
-on for the two interpretive calls (translate, reason) — toggle with
-`CV_BAU_STUDENTS_THINK=0`. `reasoning_cache` + `lru_cache` on the resolvers drop
-repeat cost near zero.
+</details>
 
-## Scoring & comparability
+**Klíč k levné škále:** drahý 🧠 LLM staví profil a verdikt jen na úzký výběr;
+osa skóre je ⚙️ deterministická → náborář ji mění donekonečna a vše se přepočítá
+zdarma. *(Plný vizuál: [poster](docs/process-poster.png).)*
 
-| Old approach | This pipeline |
-|---|---|
-| Compare years of experience to "5+ years required" | **Drop the years axis** — students don't have it; tenure is a weak performance predictor. |
-| Match listed skills to a must-have list | Match **translated capabilities** (thesis / projects / brigády / work) → resolved to **ESCO** skill ids, each with a verbatim evidence quote + source_type. |
-| One opaque 0–100 score | **Coverage % of the recruiter-curated target set** (headline) + **bridge_fit** potential (separate) + **doloženost** (evidence strength) + the matched/missing breakdown. |
-| Mix students into the experienced ranking | **Separate student / experienced columns** + career-changers — same fair axis, calibrated display. |
+---
 
-The recruiter **skill-picker** curates the role's target skills (suggested from
-the ad's ISCO occupation family); saving re-scores all candidates deterministically
-(no LLM). `bridge_fit` reads `data/level_checklists.csv` (per-domain junior /
-medior / senior expectations); `bridgeable_in_months=None` is the
-"experience-only, no shortcut" wall.
+## Proces ZÁJEMCE (podle DEMO)
 
-**Candidate type** (student / career_changer / experienced) is decided by a
-deterministic Python classifier that **overrides** the LLM tag, judged relative
-to the target ad: <2y real work / only brigády / studying / fresh grad →
-*student* (potential); ≥2y work in a *different* field than the ad →
-*career_changer*; ≥2y aligned work → *experienced*.
+| # | Co kandidát dělá / vidí | Na pozadí | DEMO → nasazení |
+|---|---|---|---|
+| 1 | Nahraje CV + vidí oznámení *„hodnotíme dovednosti, ne osobní údaje"* | extrakce profilu, **slepá k pohlaví/věku/jménu** | stejné |
+| 2 | Profil zpracován + štítek typu 📚/🔄/💼 | 🧠 CV → dovednosti (citace + typ zdroje); ⚙️ **klasifikace typu vůči pozici** (přebíjí odhad LLM) | DEMO: 1 inzerát · nasazení: korpus |
+| 3 | Náhled pozice + „proč ti sedne" — **bez skóre** | ⚙️ porovnání dovedností, bez LLM → okamžité | stejné |
+| 4 | „Mám zájem" → 2–3 cílené otázky | 🧠 dotazník **odkrývá skryté dovednosti**; 1× na inzerát, všem stejné | DEMO: prázdné · nasazení: AI-předvyplnění |
+| 5 | Odpoví vlastními slovy a odešle | 🧠 odpovědi → profil → re-překlad → ⚙️ **přeskórování** | stejné |
+| 6 | Potvrzení odeslání | kandidát viditelný náboráři | stejné |
 
-## Trust & compliance
+*Typ kandidáta určí deterministický klasifikátor vůči pozici:
+< 2 roky reálné praxe / jen brigády / studuje → **student**; ≥ 2 roky v jiném oboru
+→ **kariérní změna**; ≥ 2 roky v souladu → **zkušený**.
+→ [`detector/classify.py`](src/cv_bau_students/detector/classify.py)*
 
-- **Skills-only.** No demographic features enter the score; the extract +
-  translate prompts are instructed to ignore name/gender/age/nationality.
-- **Human-in-the-loop.** The recruiter decides; the score is advisory and never
-  auto-rejects. Each candidate has a human-readable explanation (verdict +
-  matched/missing skills + per-skill evidence + raw CV).
-- **Honest framing.** CV skills are labelled self-reported / not verified; the
-  questionnaire probes specifics — it never auto-accuses.
-- [`docs/MODEL_CARD.md`](docs/MODEL_CARD.md) documents intended use, method,
-  data, fairness stance (incl. the calibration impossibility theorem), EU AI Act
-  high-risk classification, GDPR Art. 22, and known limits.
+> **DEMO specifika:** seed obsahuje **6 syntetických CV** (3 studenti + 3 zkušení,
+> všechny smyšlené) a **jeden inzerát** „Datový analytik / Datová analytička"
+> u fiktivní firmy *ApexFinance s.r.o.*. Cílové dovednosti pozice **kurátoruje
+> náborář** (viz dále).
 
-## Data layer
+---
 
-18-table SQLAlchemy schema (SQLite local / Postgres prod), incl.: `candidates`,
-`profile_versions`, `translated_capabilities` (with `esco_skill_id`),
-`candidate_interests`, `matches` (with `skill_fit_detail_json` →
-matched/missing + `matched_evidence`), `role_specific_questions` /
-`role_specific_answers`, `ad_target_skills` (recruiter-curated target set),
-`job_ads` / `job_ad_skills`, and the taxonomy tables `skills`, `skill_aliases`,
-`skill_hierarchy`, `skill_industry_map` (occupation→skill), `occupations`,
-`level_checklists`.
+## Proces RECRUITER (podle DEMO)
 
-### Skill taxonomy: ESCO primary + NSP overlay (role-scoped seed)
+1. **Banner**: *skóre = podpora rozhodnutí, ne automatické odmítnutí.*
+2. **Skill-picker** — náborář kurátoruje **cílovou sadu** (core / optional;
+   návrh z ISCO povolání inzerátu). Uložení **přepočítá všechny kandidáty
+   deterministicky**. Tahle sada je **porovnávací osa**.
+3. **Sloupce** Studenti / Zkušení / Career-changers — stejná osa, oddělené zobrazení.
+4. **Řádek**: jméno · % pokrytí · doloženost → rozklik = **drill-in**.
 
-- **ESCO v1.2.x** (CC BY 4.0) — ~14k skills + aliases + hierarchy + occupation→
-  skill map (en+cs), loaded via `scripts/load_esco_csv.py`,
-  `load_esco_hierarchy.py`, `load_esco_occupations.py`,
-  `load_esco_occupation_labels.py`.
-- **Czech NSP / CDK** (CC0) — Czech-native skill-name aliases on the ESCO
-  backbone (`scripts/load_nsp.py`), helping Czech CV resolution.
+### Drill-in — „Co která hodnota znamená"
 
-Resolution: deterministic normalize (lowercase + diacritics strip) → alias join
-→ rapidfuzz fuzzy fallback; the translator also emits an English `esco_term` for
-cross-lingual matching. Both `resolve_skill` (seed namespace) and
-`resolve_skill_esco` (ESCO namespace) are memoized.
+Definice **vytažené přímo z kódu** (ne vymyšlené):
 
-**Role-scoped seed.** The shipped `seed.sqlite.gz` is *scoped to the data-role
-family* (ESCO data analyst + data scientist + data engineer ≈ 100 skills + the
-demo ad), built by `scripts/build_scoped_seed.py` → `build_cloud_seed.py`. This
-keeps the single-target demo tiny (~2k rows) so cold-start is sub-second instead
-of pulling ~200k rows. Rebuild for a different role via `--isco` / occupation
-list (see `docs/DEPLOY.md`).
+| Hodnota | Co znamená | Zdroj |
+|---|---|---|
+| **Skill coverage %** | *headline skóre.* Podíl kurátorované cílové sady, který kandidát doloží: `100 × \|∩\| / \|cíl\|` (bez kurátorování = must ∪ nice z inzerátu). `total = coverage`. | `_skill_fit` |
+| **Bridge fit** | *potenciál (vedle headline).* Doplnitelnost mezer v měsících (0 → 100, 24 → 0); „jen praxí — bez zkratky" → strop **35**; bez rubriky → **N/A**. | `_bridge_fit` + `levels/repo.py` |
+| **Doloženost 🟢🟡⚪** | čím je dovednost podložená: 🟢 praxe/stáž/cert · 🟡 projekt/studium · ⚪ jen uvedeno. Štítek **vysoká / střední / nízká**. | `evidence.py` |
+| **Counterfactual** | *„Doložit X → N % → M %"* — o kolik vyskočí pokrytí po doložení dané dovednosti. Bez LLM (GDPR/CJEU protipříklad). | `counterfactual_lifts` |
+| **AI zdůvodnění** | verdikt + silné stránky + mezery + otázky na pohovor; váží **doložené > uvedené**. | `reasoning.md` |
+| **Confidence band** | ± pásmo z jistoty překladu (`max(5, 30 − 25·avg)`) → varování *„nízká doloženost"*, když převažuje ⚪. | `_confidence_band` |
+| **Lidský dohled** | náborář **potvrdí / přepíše** skóre s poznámkou (AI Act čl. 14 / GDPR čl. 22). | override |
+| **Audit napříč typy** | míra výběru + four-fifths poměr napříč typy — *transparentní metrika, ne pass/fail brána*. | `analytics/audit.py` |
 
-## Deploy (Streamlit Cloud + persistence)
+Drill-in čte **shora dolů jako prezentace**: skóre → pokrytí + doloženost →
+dovednosti → **AI verdikt** → odpovědi kandidáta → původní CV.
 
-- **Ephemeral SQLite** (default): the bundled scoped seed restores on every cold
-  start — fine for a read-only demo, uploads vanish on restart.
-- **Postgres / Neon** (persistent): set `CV_BAU_STUDENTS_DB_URL`; pour the demo
-  in once with `scripts/migrate_sqlite_to_postgres.py` (re-syncs id sequences;
-  `--truncate --confirm-destroy` guards against wiping candidate data). Uploaded
-  CVs then survive restarts. Full guide: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+---
 
-Streamlit Secrets:
-```toml
-ANTHROPIC_API_KEY      = "sk-ant-…"
-CV_BAU_STUDENTS_DB_URL = "postgresql://…?sslmode=require"   # optional, for persistence
+## DEMO vs plné nasazení
+
+| Aspekt | DEMO teď | Plné nasazení |
+|---|---|---|
+| **Hledání pozice** | single-target — jeden inzerát se předá jako cílová pozice | **korpusové hledání už je v kódu**: SQL pre-filtr → skórování → top-N (viz níže) |
+| **Data** | 6 syntetických CV + 1 inzerát (ApexFinance) | reálné CV + reálný korpus inzerátů |
+| **AI-prefill dotazníku** | prázdné odpovědi (žádné AI-vymyšlené) | předvyplnění návrhem z CV, kandidát upraví |
+| **Úložiště** | SQLite (seed se obnoví při startu) | Postgres/Neon — nahraná CV přežijí restart |
+| **Cílové dovednosti** | kurátoruje náborář ručně přes skill-picker | stejně (náborář je vždy autorita osy) |
+
+**Jak funguje korpusové hledání (už existuje, nejen plán):** drahý LLM postaví
+profil **jednou**; pak deterministický pre-filtr v SQL zúží inzeráty podle úrovně,
+domény a překryvu dovedností; každý zbylý inzerát se **deterministicky** oskóruje
+a vrátí se top-N; **LLM verdikt** (zdůvodnění) běží **jen na užší výběr**. Tím je
+hledání levné i ve velkém.
+
+```mermaid
+flowchart LR
+    Prof["🧠 Profil kandidáta<br/>(LLM, 1×)"] --> Pre["⚙️ SQL pre-filtr<br/>úroveň · doména · překryv dovedností<br/>5000 → ~50 inzerátů"]
+    Pre --> Sc["⚙️ Skórování každého inzerátu<br/>(deterministicky)"]
+    Sc --> Top["⚙️ Top-N podle pokrytí"]
+    Top --> Ver["🧠 AI verdikt<br/>jen na shortlist"]
+    classDef llm fill:#e8f0fe,stroke:#4285f4;
+    classDef det fill:#e6f4ea,stroke:#34a853;
+    class Prof,Ver llm;
+    class Pre,Sc,Top det;
 ```
 
-## Design choices
+→ [`matcher/rank.py::rank_candidate`](src/cv_bau_students/matcher/rank.py) + [`jobads/repo.py::find_candidate_ads`](src/cv_bau_students/jobads/repo.py)
 
-| Choice | Rationale |
-|---|---|
-| Single target ad | Makes the metric interpretable (coverage of one curated set) and the demo readable. Corpus-wide ranking is above MVP scope. |
-| Criterion-referenced skill coverage | Fairer than ranking juniors against peers; I/O literature backs skills over tenure. |
-| Doloženost from `source_type` | Reliability = how a skill was demonstrated (work/project vs claimed), not LLM self-confidence. |
-| Detector overrides the LLM tag, classified vs the ad | Hard rules > prose; "experienced" requires ≥2y real aligned work. |
-| Two-pass journey, deferred reasoning | Fast upload (~2 LLM calls); the costly reasoning fires once, only for the ad the candidate chooses. |
-| Postgres-ready, role-scoped seed | Persistence without code change; scoping keeps cold-start fast for the single-target use-case. |
+---
 
-## Tests
+## Technický hloubkový popis
 
-```bash
-pytest -q   # 192 tests, no network — LLM + HTTP calls patched per test
-```
+Diagramy (vrstvy, sekvence cesty kandidáta, datový model), přesná scoring
+matematika a odkazy do kódu (file\:line) jsou v
+**[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**. Compliance a limity:
+**[`docs/MODEL_CARD.md`](docs/MODEL_CARD.md)**.
 
-## Data Sources & Attribution
+## Data a atribuce
 
-Uses the **ESCO** classification of the European Commission (v1.2.x,
+Používá klasifikaci **ESCO** Evropské komise (v1.2.x,
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/),
-<https://esco.ec.europa.eu>) and Czech **NSP/CDK** competency data (CC0,
-[data.mpsv.cz](https://data.mpsv.cz)). The bundled `seed.sqlite.gz` is a
-role-scoped snapshot of that ingest. Demo CVs are synthetic (Apache-2.0). Full
-notices: [NOTICES.md](NOTICES.md).
+<https://esco.ec.europa.eu>) a česká **NSP/CDK** data o kompetencích (CC0,
+[data.mpsv.cz](https://data.mpsv.cz)). Přibalený `seed.sqlite.gz` je role-scoped
+výřez tohoto importu. Demo CV jsou syntetická (Apache-2.0). Plné podmínky:
+[NOTICES.md](NOTICES.md).
 
-## License
+## Licence
 
-Code: MIT — see [LICENSE](LICENSE). Bundled data: per-dataset, see [NOTICES.md](NOTICES.md).
+Kód: MIT — viz [LICENSE](LICENSE). Přibalená data: dle datasetu, viz
+[NOTICES.md](NOTICES.md).
