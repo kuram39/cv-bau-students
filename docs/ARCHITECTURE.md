@@ -1,5 +1,7 @@
 # Architecture — how cv-bau-students works
 
+> Česká verze: [`ARCHITECTURE.cs.md`](ARCHITECTURE.cs.md).
+
 A study guide to the whole system: the mental model, the four layers, the
 candidate journey, the scoring engine, the LLM calls, the data model, and the
 design decisions behind them. File:line anchors point at the real code so this

@@ -172,7 +172,8 @@ flowchart LR
 
 Diagramy (vrstvy, sekvence cesty kandidáta, datový model), přesná scoring
 matematika a odkazy do kódu (file\:line) jsou v
-**[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**. Compliance a limity:
+**[`docs/ARCHITECTURE.cs.md`](docs/ARCHITECTURE.cs.md)** (🇬🇧
+[anglicky](docs/ARCHITECTURE.md)). Compliance a limity:
 **[`docs/MODEL_CARD.md`](docs/MODEL_CARD.md)**.
 
 ## Data a atribuce
