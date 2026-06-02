@@ -28,7 +28,8 @@ import sys
 from sqlalchemy import text
 
 from cv_bau_students import config
-from cv_bau_students.db import get_session, init_db, reset_engine_for_tests
+from cv_bau_students.bootstrap import ensure_seeded
+from cv_bau_students.db import get_session, reset_engine_for_tests
 from cv_bau_students.taxonomy.repo import resolve_skill, resolve_skill_esco
 
 # Czech-specific letters — a phrase carrying any of these is *detectably* Czech.
@@ -55,36 +56,45 @@ def _resolves_esco(phrase: str) -> bool:
     return resolve_skill_esco(phrase) is not None
 
 
-def collect_rows(db_url: str | None = None) -> list[tuple[str, str | None]]:
-    """`(skill_canonical, esco_term)` rows from translated_capabilities.
+def collect_rows(db_url: str | None = None) -> list[tuple[str, str | None, int | None]]:
+    """`(skill_canonical, esco_term, esco_skill_id)` rows from translated_capabilities.
 
-    Calls `init_db()` first so a fresh/unseeded DB doesn't crash on a missing
-    table (matches how the other repo scripts bootstrap before reading)."""
+    Restores the bundled demo seed (`ensure_seeded`) first so the default
+    invocation on a fresh checkout measures real data instead of an empty schema
+    (and a missing table can't 500). For an explicit populated `--source`, the
+    restore is a no-op."""
     if db_url:
         reset_engine_for_tests(db_url)  # public reset; also used by the test conftest
-    init_db()  # idempotent: create tables (+ migrate) so the SELECT can't 500
+    ensure_seeded()  # restore seed.sqlite.gz if empty + create/migrate tables
     with get_session() as session:
         rows = session.execute(
-            text("SELECT skill_canonical, esco_term FROM translated_capabilities")
+            text("SELECT skill_canonical, esco_term, esco_skill_id FROM translated_capabilities")
         ).all()
-    return [(c, e) for c, e in rows if c and c.strip()]
+    return [(c, e, sid) for c, e, sid in rows if c and c.strip()]
 
 
-def summarize(rows: list[tuple[str, str | None]]) -> dict:
+def summarize(rows: list[tuple[str, str | None, int | None]]) -> dict:
     """Resolution stats over capability rows. Pure — easy to unit-test.
 
-    `runtime_*` mirrors the matcher: one value PER ROW (`esco_term or
-    skill_canonical`), resolved via the ESCO namespace only (seed-only hits give
-    the matcher no id). `raw_*` resolves the distinct `skill_canonical` display
-    phrases (where Czech lives) and reports the detectable-Czech subset + tail."""
-    # Runtime-effective: count per capability row (NOT deduped — dup capabilities
-    # across candidates each cost a resolution at runtime), esco_term preferred,
-    # ESCO-only resolution.
-    runtime_phrases = [(e.strip() if e and e.strip() else c.strip()) for c, e in rows]
-    runtime_resolved = sum(1 for p in runtime_phrases if _resolves_esco(p))
+    `runtime_*` mirrors the matcher exactly: per ROW, a row counts as covered
+    when it has a persisted `esco_skill_id` OR `esco_term or skill_canonical`
+    resolves in the ESCO namespace (the matcher credits the stored id first, then
+    falls back to `resolve_skill_esco`). NB this models the CURATED / ISCO target
+    path (ESCO space); an ad with NO recruiter-curated set is scored by
+    `_skill_fit` in SEED space instead, so `raw_*` is the better proxy there.
+    `raw_*` resolves the distinct `skill_canonical` display phrases (where Czech
+    lives) and reports the detectable-Czech subset + tail."""
+    # Runtime-effective: per capability row (NOT deduped — dup capabilities across
+    # candidates each cost a resolution), honoring the persisted esco_skill_id.
+    runtime_phrases = rows
+    runtime_resolved = sum(
+        1
+        for c, e, sid in rows
+        if sid is not None or _resolves_esco(e.strip() if e and e.strip() else c.strip())
+    )
 
     # Raw display phrases (skill_canonical only).
-    raw = sorted({c.strip() for c, _ in rows})
+    raw = sorted({c.strip() for c, _e, _s in rows})
     raw_resolved = {p for p in raw if _resolves(p)}
     czech = [p for p in raw if _is_czechish(p)]
     czech_resolved = [p for p in czech if _resolves(p)]

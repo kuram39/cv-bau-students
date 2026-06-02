@@ -18,16 +18,18 @@ def test_summarize_runtime_is_esco_only_and_per_row(monkeypatch):
         lambda p: (2, p) if p in {"SQL", "data modelling", "Python"} else None,
     )
 
+    # rows = (skill_canonical, esco_term, esco_skill_id)
     rows = [
-        ("SQL", None),  # runtime "SQL" → ESCO ✓
-        ("SQL", None),  # duplicate capability → counts AGAIN per row
-        ("datové modelování", "data modelling"),  # runtime esco_term ✓ (raw fails)
-        ("dolování dat", None),  # czech, unresolved
-        ("Python analysis", "Python"),  # runtime esco_term ✓ (raw fails)
+        ("SQL", None, None),  # runtime "SQL" → ESCO ✓
+        ("SQL", None, None),  # duplicate capability → counts AGAIN per row
+        ("datové modelování", "data modelling", None),  # runtime esco_term ✓ (raw fails)
+        ("dolování dat", None, None),  # czech, esco_term None, unresolved
+        ("tunnel boring", None, 77),  # ascii; stored esco_skill_id → runtime ✓ though phrase fails
     ]
     s = mr.summarize(rows)
 
-    # runtime = per ROW (5), ESCO-only: SQL, SQL, data modelling, Python = 4/5.
+    # runtime = per ROW (5): SQL, SQL, data modelling, +stored-id row = 4/5
+    # ("dolování dat" has no id and doesn't resolve).
     assert s["runtime_total"] == 5
     assert s["runtime_resolved"] == 4
     assert s["runtime_pct"] == 80.0
