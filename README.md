@@ -78,7 +78,7 @@ flowchart TD
 ```
 
 **Klíč k levné škále:** drahý LLM staví profil a tvoří verdikt jen na úzký výběr;
-osa skóre (pokrytí) je deterministická → recruiter může osu měnit donekonečna
+osa skóre (pokrytí) je deterministická → náborář může osu měnit donekonečna
 a vše se přepočítá zdarma.
 
 ---
@@ -146,7 +146,7 @@ U každého kroku: **(a)** co kandidát vidí/dělá · **(b)** co se děje na p
 > **DEMO specifika:** seed obsahuje **6 syntetických CV** (3 studenti + 3 zkušení,
 > všechny smyšlené) a **jeden inzerát** „Datový analytik / Datová analytička"
 > u fiktivní firmy *ApexFinance s.r.o.*. Cílové dovednosti pozice **kurátoruje
-> recruiter** (viz dále).
+> náborář** (viz dále).
 
 ---
 
@@ -178,7 +178,7 @@ Definice níže jsou **vytažené přímo z kódu** (ne vymyšlené):
 
 - **Skill coverage (% pokrytí)** — *podíl kurátorované cílové sady, který kandidát
   doloží.* Spočítá se jako `100 × |doložené ∩ cílová sada| / |cílová sada|`. Když
-  recruiter ještě nic nekurátoroval, denominátorem jsou must-have ∪ nice-to-have
+  náborář ještě nic nekurátoroval, denominátorem jsou must-have ∪ nice-to-have
   z inzerátu. Toto je **headline skóre** (`total = skill coverage`).
   → [`matcher/score.py::_skill_fit`](src/cv_bau_students/matcher/score.py)
 - **Bridge fit (potenciál)** — *sekundární signál růstu*: jak snadno jsou
@@ -225,7 +225,7 @@ přeložené dovednosti → **AI verdikt** → vlastní odpovědi kandidáta →
 | **Data** | 6 syntetických CV + 1 inzerát (ApexFinance) | reálné CV + reálný korpus inzerátů |
 | **AI-prefill dotazníku** | prázdné odpovědi (žádné AI-vymyšlené) | předvyplnění návrhem z CV, kandidát upraví |
 | **Úložiště** | SQLite (seed se obnoví při startu) | Postgres/Neon — nahraná CV přežijí restart |
-| **Cílové dovednosti** | kurátoruje recruiter ručně přes skill-picker | stejně (recruiter je vždy autorita osy) |
+| **Cílové dovednosti** | kurátoruje náborář ručně přes skill-picker | stejně (náborář je vždy autorita osy) |
 
 **Jak funguje korpusové hledání (už existuje, nejen plán):** drahý LLM postaví
 profil **jednou**; pak deterministický pre-filtr v SQL zúží inzeráty podle úrovně,
@@ -256,29 +256,12 @@ matematika a odkazy do kódu (file\:line) jsou v
 **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**. Compliance a limity:
 **[`docs/MODEL_CARD.md`](docs/MODEL_CARD.md)**.
 
-## Spuštění (lokálně)
+## Spuštění a nasazení
 
-```bash
-python3.11 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -e . --no-deps          # workaround SSL certu v tomto prostředí; nebo .pth soubor
-
-cp .env.example .env                # doplň ANTHROPIC_API_KEY (spouští majitel; agentí klíč je odstraněn)
-
-# Obnov přibalený role-scoped seed (ESCO dovednosti datové role + demo inzerát)
-python -c "from cv_bau_students.bootstrap import ensure_seeded; ensure_seeded()"
-
-# Naseeduj demo: připrav cílový inzerát + projdi 6 syntetických CV (~LLM volání)
-python -m scripts.seed_target_demo
-
-pytest -q                           # in-memory SQLite, bez sítě
-streamlit run src/cv_bau_students/ui/app.py
-```
-
-Dvouzáložkový Streamlit: **Kandidát** (nahraj CV → detail pozice → zájem →
-odpovědi) a **Recruiter** (kurátoruj cílové dovednosti → seřazený seznam
-s % pokrytí + doložeností + drill-inem).
+Instalace, lokální běh a deploy (Streamlit Cloud + Postgres/Neon) jsou
+v anglické referenční verzi: [`docs/README.en.md`](docs/README.en.md) ·
+[`docs/DEPLOY.md`](docs/DEPLOY.md). Aplikace je dvouzáložkový Streamlit
+(**Kandidát** / **Recruiter**).
 
 ## Data a atribuce
 
@@ -293,4 +276,3 @@ výřez tohoto importu. Demo CV jsou syntetická (Apache-2.0). Plné podmínky:
 
 Kód: MIT — viz [LICENSE](LICENSE). Přibalená data: dle datasetu, viz
 [NOTICES.md](NOTICES.md).
-</content>
