@@ -10,6 +10,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -318,6 +319,12 @@ class Match(Base):
     # Mirrors models.SkillFitDetail. None for legacy/no-isco matches.
     skill_fit_detail_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Human oversight (EU AI Act Art. 14 / GDPR Art. 22 meaningful-involvement):
+    # the recruiter can override / contest a score. Nullable → auto-ALTERed onto
+    # existing DBs by db._auto_add_missing_columns; never touched by rescore_ad.
+    recruiter_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    override_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decision_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ReasoningCache(Base):
