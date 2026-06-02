@@ -28,7 +28,7 @@ def ask(
         missing_fields=json.dumps(missing_fields, ensure_ascii=False),
         language=profile.language,
     )
-    payload = llm.call_json(prompt)
+    payload = llm.call_json(prompt, model=llm.mechanical_model())
     questions = [CompletionQuestion.model_validate(q) for q in payload.get("questions", [])][:3]
     return CompletionRound(round_no=round_no, questions=questions)
 

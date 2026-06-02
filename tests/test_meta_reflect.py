@@ -106,7 +106,7 @@ def test_reflect_never_includes_candidate_specific_identifiers(tmp_path: Path):
     _seed_run("student")
     captured: dict[str, str] = {}
 
-    def _capture(prompt: str) -> dict:
+    def _capture(prompt: str, **_kwargs) -> dict:
         captured["prompt"] = prompt
         return _FAKE_REFLECTION
 

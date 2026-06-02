@@ -31,7 +31,7 @@ def generate_role_questions(ad: JobAd) -> list[RoleSpecificQuestionPydantic]:
         nice_to_have=json.dumps(ad.nice_to_have, ensure_ascii=False),
         raw_text=ad.raw_text[:3000],  # cap to keep the prompt cheap
     )
-    payload = llm.call_json(prompt)
+    payload = llm.call_json(prompt, model=llm.mechanical_model())
     out: list[RoleSpecificQuestionPydantic] = []
     for q in payload.get("questions", [])[:3]:
         slot = (q.get("slot") or "").strip()

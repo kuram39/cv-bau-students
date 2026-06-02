@@ -25,6 +25,14 @@ DATA_DIR = PACKAGE_ROOT / "data"
 # confidence calibration). No other change needed: both models take the same
 # request surface (adaptive thinking, no sampling params).
 LLM_MODEL = "claude-sonnet-4-6"
+# Cost tiering (research #7, RANK 1): the mechanical calls (extraction, classify,
+# isco-resolve, role-question gen) are 3× cheaper on Haiku 4.5 ($1/$5 vs Sonnet
+# $3/$15) at ~no quality loss for structured extraction. The two interpretive
+# `think=True` calls (translate, reason) STAY on Sonnet. OFF by default — flip
+# CV_BAU_STUDENTS_TIER=1 to enable, but A/B Haiku on a CZECH CV first (Czech
+# extraction is the pipeline's weak spot — see docs/RISKS.md).
+LLM_MODEL_CHEAP = "claude-haiku-4-5"
+LLM_TIER_MECHANICAL = os.environ.get("CV_BAU_STUDENTS_TIER", "0") == "1"
 LLM_MAX_TOKENS = 4096
 # Thinking calls: max_tokens is the TOTAL budget shared by the (hidden) thinking
 # blocks and the JSON answer. With adaptive thinking at 8192 the model spent the
