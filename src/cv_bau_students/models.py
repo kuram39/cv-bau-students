@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 CandidateType = Literal["student", "career_changer", "experienced"]
 SourceType = Literal[
+    "work",          # regular full-time / part-time professional job (non-internship)
     "thesis",
     "school_project",
     "internship",

@@ -12,7 +12,14 @@ capability) has no source_type → treated as the weakest ("claimed").
 from __future__ import annotations
 
 # source_type → tier.
+# NOTE: "work" (regular full-time/part-time professional job) must be "strong".
+# Without it, experienced candidates' skills fallthrough to "other" → "weak",
+# meaning a data analyst with 5 years of professional SQL work scores the same
+# evidence tier as a hobby. Added alongside the SourceType literal (models.py)
+# and the translator prompt after PR #28 introduced the evidence system without
+# a "work" type in the enum.
 _TIER: dict[str, str] = {
+    "work": "strong",
     "internship": "strong",
     "open_source": "strong",
     "certification": "strong",

@@ -27,11 +27,11 @@ DATA_DIR = PACKAGE_ROOT / "data"
 LLM_MODEL = "claude-sonnet-4-6"
 LLM_MAX_TOKENS = 4096
 # Thinking calls: max_tokens is the TOTAL budget shared by the (hidden) thinking
-# blocks and the JSON answer. With adaptive thinking at 8192 the model spent the
-# whole budget thinking and never emitted the answer (stop_reason=max_tokens,
-# blocks=['thinking']). So we cap thinking explicitly via `budget_tokens` and
-# size max_tokens to leave guaranteed answer room: 12000 total = up to 8000
-# thinking + ≥4000 for the JSON. Stays under the ~16K non-streaming threshold.
+# blocks and the JSON answer. With adaptive thinking the model can spend the
+# whole budget thinking and never emit the answer (stop_reason=max_tokens,
+# blocks=['thinking']). Cap thinking explicitly via `budget_tokens` to guarantee
+# answer room: 8000 total = up to 4000 thinking + ≥4000 for the JSON answer.
+# PR #19 reduced this from the original 12000/8000 split after demo latency issues.
 LLM_THINK_MAX_TOKENS = 8000
 LLM_THINK_BUDGET = 4000  # thinking cap; must be < LLM_THINK_MAX_TOKENS (leaves ≥4000 for answer)
 # Master switch for extended thinking on the 2 interpretive calls (translate,

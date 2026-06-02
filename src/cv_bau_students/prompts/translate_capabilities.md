@@ -24,7 +24,7 @@ Return a single JSON object — no prose, no markdown fences:
       "evidence_quote": "<verbatim substring from the profile JSON (project description, brigada description, summary, thesis_summary) that justifies this — max 200 chars>",
       "confidence": <float 0.0 - 1.0>,
       "caveat": "<short hedge in profile language, or null>",
-      "source_type": "thesis" | "school_project" | "internship" | "brigada" | "hobby" | "open_source" | "certification" | "course" | "language" | "other",
+      "source_type": "work" | "thesis" | "school_project" | "internship" | "brigada" | "hobby" | "open_source" | "certification" | "course" | "language" | "other",
       "relevance": "must_have" | "nice_to_have",
       "esco_term": "<standard ENGLISH ESCO skill label, even when `skill` is Czech — e.g. 'data cleansing', 'data modelling', 'database management systems', 'machine learning'. null only if nothing maps.>"
     }
@@ -53,6 +53,7 @@ as the human-readable name you'd show a recruiter).
 
 | Source | Default confidence range | Typical caveat |
 |---|---|---|
+| `work` (regular full-time or part-time professional job, not internship/brigada) | 0.65 – 0.85 | "verify scope if title-only; add caveat when team ownership unclear" |
 | `thesis` (with summary) | 0.6 – 0.75 | "academic project — production maturity not demonstrated" |
 | `school_project` (capstone, semester project) | 0.5 – 0.7 | "team project — individual scope unclear" (when team_size > 1) |
 | `internship` | 0.55 – 0.7 | "short tenure — exposure rather than ownership" |
@@ -156,7 +157,7 @@ Output:
       "evidence_quote": "vedl 12-člennou kuchyňskou směnu, koordinoval s dodavateli",
       "confidence": 0.65,
       "caveat": "Industry-different but skill-transferable",
-      "source_type": "other",
+      "source_type": "work",
       "relevance": "must_have"
     },
     {
@@ -164,7 +165,7 @@ Output:
       "evidence_quote": "Hledám příležitost přejít do produktové role, kde se uplatní moje schopnost řídit cross-functional projekty",
       "confidence": 0.55,
       "caveat": "Self-described — verify in interview",
-      "source_type": "other",
+      "source_type": "work",
       "relevance": "must_have"
     },
     {
@@ -172,7 +173,7 @@ Output:
       "evidence_quote": "vlastnil P&L",
       "confidence": 0.7,
       "caveat": "Restaurant scale, not product scale",
-      "source_type": "other",
+      "source_type": "work",
       "relevance": "nice_to_have"
     }
   ]
