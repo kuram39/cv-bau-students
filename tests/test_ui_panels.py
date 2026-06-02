@@ -148,9 +148,37 @@ def test_skill_fit_detail_renders_coverage(monkeypatch):
     )
     recruiter_panel._render_skill_fit_detail(d)
     captions = " ".join(str(c.args[0]) for c in fake.caption.call_args_list if c.args)
+    markdowns = " ".join(str(c.args[0]) for c in fake.markdown.call_args_list if c.args)
     assert "Skill coverage" in captions
     assert "3/10" in captions
-    assert "SQL" in captions
+    assert "SQL" in markdowns  # matched skills promoted to markdown (equal prominence)
+    # Gap shown at equal prominence + counterfactual recourse line.
+    assert "Chybějící" in markdowns and "Power BI" in markdowns
+    assert "Doložit" in markdowns and "30 %" in markdowns and "40 %" in markdowns
+
+
+def test_low_doloznost_warns(monkeypatch):
+    """A wide confidence_band surfaces the 'orientational score' warning."""
+    ad_id, ad = _seed_candidate_for_ad()
+    fake = _fake_st()
+    monkeypatch.setattr(recruiter_panel, "st", fake)
+    summaries = candidates_repo.get_candidates_for_ad(ad_id, kind="student")
+    # Force a wide band on the stored match so the caveat path fires.
+    candidates_repo.store_match(
+        summaries[0].candidate_id,
+        ad_id,
+        match=MatchScore(
+            ad_id=ad_id,
+            skill_fit=40.0,
+            bridge_fit=10.0,
+            personal_fit=0.0,
+            total=40.0,
+            confidence_band=28.0,  # > _LOW_DOLOZNOST_BAND
+        ),
+    )
+    recruiter_panel._render_detail(ad_id, summaries[0].candidate_id)
+    warnings = " ".join(str(c.args[0]) for c in fake.warning.call_args_list if c.args)
+    assert "orientační" in warnings
 
 
 def test_recruiter_detail_renders(monkeypatch):

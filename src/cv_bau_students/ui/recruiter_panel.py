@@ -15,7 +15,12 @@ from cv_bau_students.candidates import repo as candidates_repo
 from cv_bau_students.evidence import TIER_EMOJI
 from cv_bau_students.explanation.format import parse_reasoning
 from cv_bau_students.jobads import repo as jobads_repo
+from cv_bau_students.matcher.score import counterfactual_lifts
 from cv_bau_students.models import JobAd
+
+# confidence_band > this ⇒ avg translator confidence < ~0.5 (band = 30 − 25·avg),
+# i.e. the coverage % rests on thin/low-confidence evidence → flag it.
+_LOW_DOLOZNOST_BAND = 18.0
 
 TYPE_BADGE = {
     "student": "📚 Student",
@@ -236,7 +241,16 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
     bridge_display = f"{m.bridge_fit:.0f}" if m.bridge_fit >= 0 else "N/A"
     c2.metric("Bridge fit (potenciál)", bridge_display)
 
+    # Honest precision (research #8): when the coverage rests on thin/low-confidence
+    # evidence, flag it as orientational instead of showing a falsely precise %.
+    if m.confidence_band > _LOW_DOLOZNOST_BAND:
+        st.warning("⚠️ Nízká doloženost — skóre je orientační, opři rozhodnutí o důkazy níže.")
+
     _render_skill_fit_detail(m.skill_fit_detail)
+    st.caption(
+        "ℹ️ Rozpoznání českých dovedností je omezené → seznam chybějících dovedností "
+        "může být neúplný. Viz `docs/MODEL_CARD.md`."
+    )
 
     if m.bridge_plan:
         st.markdown("**Bridge plan** (co doplnit pro vyšší úroveň):")
@@ -324,9 +338,14 @@ def _render_skill_fit_detail(d) -> None:
         evidence = getattr(d, "matched_evidence", None) or []
         if evidence:
             tags = " · ".join(f"{TIER_EMOJI.get(tier, '⚪')} {name}" for name, tier in evidence)
-            st.caption("Pokryté dovednosti (doloženost): " + tags)
+            st.markdown("**Pokryté dovednosti (doloženost):** " + tags)
             st.caption("🟢 prokázané praxí · 🟡 projekt/studium · ⚪ jen uvedeno")
         elif d.role_essential_matched:
-            st.caption("Pokryté: " + " · ".join(d.role_essential_matched))
+            st.markdown("**Pokryté:** " + " · ".join(d.role_essential_matched))
+        # Gaps at EQUAL prominence with matched (research #8: disconfirmation-
+        # inviting design) — promoted from a trailing caption to a markdown block.
         if d.role_essential_missing:
-            st.caption("❌ Chybějící (ukázka): " + " · ".join(d.role_essential_missing))
+            st.markdown("**❌ Chybějící (ukázka):** " + " · ".join(d.role_essential_missing))
+        # Counterfactual recourse: what each gap would do to coverage if evidenced.
+        for skill, cur, new in counterfactual_lifts(d):
+            st.markdown(f"↗️ Doložit **{skill}** → pokrytí {cur} % → **{new} %**")
