@@ -66,27 +66,30 @@ def init_db() -> None:
 
 
 def _migrate_columns() -> None:
-    """Add ORM columns missing from already-existing tables (SQLite).
+    """Add ORM columns missing from already-existing tables (SQLite + Postgres).
 
     `create_all()` creates missing *tables* but never ALTERs an existing
     one, so a DB created before a column was added (e.g. `job_ads.isco_code`,
-    `candidates.raw_cv_text`) would raise an unknown-column error on the
-    first query. This lightweight, idempotent migration adds any missing
-    *nullable* column via `ALTER TABLE ADD COLUMN`. It never drops or
-    retypes, and skips NOT-NULL-without-default columns (can't be added to
-    populated rows). No-op on non-SQLite backends (use alembic there).
-    """
-    engine = _engine()
-    if engine.dialect.name != "sqlite":
-        return
-    from sqlalchemy import text
+    `candidates.raw_cv_text`, the `matches` override columns) would raise an
+    unknown-column error on the first query. This lightweight, idempotent
+    migration adds any missing *nullable* column via `ALTER TABLE ADD COLUMN`.
+    It never drops or retypes, and skips NOT-NULL-without-default columns (can't
+    be added to populated rows).
 
+    Dialect-agnostic via SQLAlchemy's inspector, so an existing Postgres/Neon
+    deployment picks up new nullable columns on the next boot WITHOUT a separate
+    Alembic step. `ADD COLUMN` of a nullable column is a cheap metadata-only op
+    on Postgres (no table rewrite).
+    """
+    from sqlalchemy import inspect, text
+
+    engine = _engine()
+    inspector = inspect(engine)
     with engine.begin() as conn:
         for table in Base.metadata.sorted_tables:
-            rows = conn.execute(text(f"PRAGMA table_info('{table.name}')")).fetchall()
-            if not rows:
+            if not inspector.has_table(table.name):
                 continue  # table absent → create_all already built it fresh
-            existing = {r[1] for r in rows}
+            existing = {c["name"] for c in inspector.get_columns(table.name)}
             for col in table.columns:
                 if col.name in existing:
                     continue
