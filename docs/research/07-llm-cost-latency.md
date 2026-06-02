@@ -17,7 +17,7 @@
 ## Concrete recommendations (for us), ranked
 
 - **RANK 1 — model-tier (high impact / low effort):** add a `model=` param to `llm.call_json`; route `extract_profile` + completion-question + prefill to `claude-haiku-4-5`; keep `translate` + `reason` on Sonnet. A/B on the committed demo CVs incl. a Czech one.
-- **RANK 2 — structured outputs (high / medium effort):** replace `_strip_fences` with Anthropic Structured Outputs from the existing Pydantic models on all `call_json` sites. Kills billed parse-retries; no surcharge.
+- **RANK 2 — structured outputs (high / medium effort):** replace `_strip_fences` with Anthropic Structured Outputs from the existing Pydantic models on all `call_json` sites; no surcharge. **Correction (Codex):** `call_json` does **not** retry on bad JSON today — it runs `json.loads` and raises `ValueError` on `JSONDecodeError` (`llm.py:104-119`), and no caller retries. So the win is **reliability / fewer hard failures**, not "killing billed parse-retries" (there are none) — don't rank it as a cost lever, rank it as a robustness lever.
 - **RANK 3 — prompt caching (medium / medium effort):** refactor `call_json` to put each prompt's static body first with `cache_control: ephemeral` (system *or* leading user block) and variable CV/ad text last; 5-min TTL for the per-applicant burst. Only on the two Sonnet `think` calls.
 - **RANK 4 — batches (offline / low effort):** route `seed_target_demo.py` + CV-gen scripts through the Message Batches API (flat 50%), 1-hr cache TTL. Never the interactive journey.
 - **RANK 5 — streaming (latency only / low effort):** stream the two `think=True` calls into the candidate panel to cut time-to-first-token at zero cost change.
