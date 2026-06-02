@@ -48,9 +48,12 @@ Aplikace má dvě záložky — dva pohledy na tentýž proces:
 Celý proces na jednom obrázku. 🧠 = krok s jazykovým modelem (drahý, běží **jednou**),
 ⚙️ = deterministický krok (bez LLM, **zdarma a opakovatelný**).
 
-> 🖼️ **Prezentační poster** celého procesu (pro slidy / tisk):
-> [`docs/process-poster.png`](docs/process-poster.png) · [PDF](docs/process-poster.pdf)
-> — diagram níže je textová (GitHub-native) verze téhož.
+[![Proces cv-bau-students — poster (klikni pro PDF)](docs/process-poster.png)](docs/process-poster.pdf)
+
+<sub>📄 Verze pro slidy / tisk: [PDF](docs/process-poster.pdf) · [PNG](docs/process-poster.png).</sub>
+
+<details>
+<summary>Textová (GitHub-native) verze diagramu</summary>
 
 ```mermaid
 flowchart LR
@@ -61,6 +64,8 @@ flowchart LR
     class P,Q,RE llm;
     class C,S,RS det;
 ```
+
+</details>
 
 **Klíč k levné škále:** drahý 🧠 LLM staví profil a verdikt jen na úzký výběr;
 osa skóre je ⚙️ deterministická → náborář ji mění donekonečna a vše se přepočítá
