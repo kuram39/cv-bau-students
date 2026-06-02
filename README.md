@@ -48,6 +48,10 @@ Aplikace má dvě záložky — dva pohledy na tentýž proces:
 Celý proces na jednom obrázku. 🧠 = krok s jazykovým modelem (drahý, běží **jednou**),
 ⚙️ = deterministický krok (bez LLM, **zdarma a opakovatelný**).
 
+> 🖼️ **Prezentační poster** celého procesu (pro slidy / tisk):
+> [`docs/process-poster.png`](docs/process-poster.png) · [PDF](docs/process-poster.pdf)
+> — diagram níže je textová (GitHub-native) verze téhož.
+
 ```mermaid
 flowchart TD
     subgraph Z["👤 ZÁJEMCE"]
