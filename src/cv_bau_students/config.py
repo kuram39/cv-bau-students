@@ -33,6 +33,13 @@ LLM_MODEL = "claude-sonnet-4-6"
 # extraction is the pipeline's weak spot — see docs/RISKS.md).
 LLM_MODEL_CHEAP = "claude-haiku-4-5"
 LLM_TIER_MECHANICAL = os.environ.get("CV_BAU_STUDENTS_TIER", "0") == "1"
+# Structured outputs (research #7): when a call passes a JSON schema, force a
+# tool-call so the model emits schema-valid JSON directly — removing the
+# ```json``` fence-strip + parse-retry path. OFF by default; flip
+# CV_BAU_STUDENTS_STRUCTURED=1 to enable (owner verifies against the live API).
+# NOT applied to the extended-thinking calls (forced tool-use + thinking has SDK
+# rough edges — those keep the text+parse path).
+LLM_STRUCTURED = os.environ.get("CV_BAU_STUDENTS_STRUCTURED", "0") == "1"
 LLM_MAX_TOKENS = 4096
 # Thinking calls: max_tokens is the TOTAL budget shared by the (hidden) thinking
 # blocks and the JSON answer. With adaptive thinking at 8192 the model spent the

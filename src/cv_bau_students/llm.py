@@ -88,6 +88,7 @@ def call_json(
     max_tokens: int = LLM_MAX_TOKENS,
     think: bool = False,
     model: str | None = None,
+    schema: dict | None = None,
 ) -> dict:
     """Send a single-turn prompt expecting strict JSON output. Returns parsed dict.
 
@@ -103,12 +104,13 @@ def call_json(
     Only `text` blocks are concatenated below, so any thinking blocks in the
     response are ignored for parsing regardless of this flag.
     """
+    thinking_on = think and LLM_THINK_ENABLED
     kwargs: dict = {
         "model": model or LLM_MODEL,
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }
-    if think and LLM_THINK_ENABLED:
+    if thinking_on:
         # Explicit thinking budget (not adaptive): caps reasoning at
         # LLM_THINK_BUDGET so the remaining max_tokens is reserved for the JSON
         # answer. Adaptive thinking could consume the whole budget and leave no
@@ -116,6 +118,31 @@ def call_json(
         budget = max_tokens if max_tokens > LLM_THINK_MAX_TOKENS else LLM_THINK_MAX_TOKENS
         kwargs["max_tokens"] = budget
         kwargs["thinking"] = {"type": "enabled", "budget_tokens": LLM_THINK_BUDGET}
+
+    # Structured-output path: force a tool call whose input_schema IS the target
+    # schema → the model returns schema-valid JSON directly (no fence-strip /
+    # parse-retry). Gated on the flag + a passed schema, and skipped for the
+    # thinking calls (forced tool-use + extended thinking has SDK rough edges).
+    if schema is not None and config.LLM_STRUCTURED and not thinking_on:
+        kwargs["tools"] = [
+            {
+                "name": "emit_result",
+                "description": "Return the structured result as the function input.",
+                "input_schema": schema,
+            }
+        ]
+        kwargs["tool_choice"] = {"type": "tool", "name": "emit_result"}
+        msg = _client().messages.create(**kwargs)
+        for block in msg.content:
+            if getattr(block, "type", None) == "tool_use":
+                return dict(block.input)
+        block_types = [getattr(b, "type", None) for b in msg.content]
+        raise ValueError(
+            "Structured call returned no tool_use block "
+            f"(model={kwargs['model']}, stop_reason={getattr(msg, 'stop_reason', None)!r}, "
+            f"blocks={block_types})."
+        )
+
     msg = _client().messages.create(**kwargs)
     raw = "".join(block.text for block in msg.content if getattr(block, "type", None) == "text")
     payload = _strip_fences(raw)
