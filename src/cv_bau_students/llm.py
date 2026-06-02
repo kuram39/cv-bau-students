@@ -89,6 +89,7 @@ def call_json(
     think: bool = False,
     model: str | None = None,
     schema: dict | None = None,
+    cache_prefix: str | None = None,
 ) -> dict:
     """Send a single-turn prompt expecting strict JSON output. Returns parsed dict.
 
@@ -105,10 +106,22 @@ def call_json(
     response are ignored for parsing regardless of this flag.
     """
     thinking_on = think and LLM_THINK_ENABLED
+    # Prompt caching: send the static `cache_prefix` as a cache_control:ephemeral
+    # block before the variable suffix, so repeated instruction bodies bill at
+    # 0.1× on a hit. Only the leading block is marked — Anthropic caches the
+    # longest matching prefix, so the static body must come first (the caller
+    # passes the static part as cache_prefix, the variable part as `prompt`).
+    if cache_prefix and config.LLM_CACHE:
+        content: object = [
+            {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": prompt},
+        ]
+    else:
+        content = prompt
     kwargs: dict = {
         "model": model or LLM_MODEL,
         "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [{"role": "user", "content": content}],
     }
     if thinking_on:
         # Explicit thinking budget (not adaptive): caps reasoning at
