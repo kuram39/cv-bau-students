@@ -43,6 +43,44 @@ Aplikace má dvě záložky — dva pohledy na tentýž proces:
 | **Zájemce** (kandidát) | nahraje CV, prohlédne si pozici, vyjádří zájem, odpoví na pár otázek | **skóre NEvidí** — vidí jen dopředu hledící doporučení „co doložit, aby seděl líp" |
 | **Recruiter** | kurátoruje cílové dovednosti pozice, prochází kandidáty | seřazený seznam s **% pokrytí + doložeností + AI verdiktem** a možností rozhodnutí přepsat |
 
+## Jak to funguje (přehled)
+
+Celý proces na jednom obrázku. 🧠 = krok s jazykovým modelem (drahý, běží **jednou**),
+⚙️ = deterministický krok (bez LLM, **zdarma a opakovatelný**).
+
+```mermaid
+flowchart TD
+    subgraph Z["👤 ZÁJEMCE"]
+        U[Nahraje CV] --> P["🧠 Převod CV → dovednosti<br/>(+ citace, typ zdroje)"]
+        P --> C["⚙️ Klasifikace typu kandidáta<br/>vůči pozici"]
+        C --> V["⚙️ Náhled pozice + 'proč ti sedne'<br/>(bez skóre)"]
+        V --> I[Vyjádří zájem]
+        I --> Q["🧠 AI dotazník<br/>(generován 1× na inzerát)"]
+        Q --> A[Vyplní odpovědi]
+    end
+
+    A --> R["🧠 Re-překlad s odpověďmi"]
+    R --> S["⚙️ Skórování<br/>pokrytí cílové sady + doloženost + bridge"]
+    S --> RE["🧠 AI verdikt<br/>(jen pro vybranou pozici / shortlist)"]
+    RE --> DB[("📦 Uložení: profil, dovednosti, skóre")]
+
+    subgraph N["🧑‍💼 RECRUITER"]
+        DB --> K["⚙️ Kurátoruje cílové dovednosti<br/>(core / optional)"]
+        K -->|uložení| RS["⚙️ Přepočet VŠECH kandidátů<br/>(deterministicky, bez LLM)"]
+        RS --> L["Seřazený seznam:<br/>% pokrytí · doloženost · verdikt"]
+        L --> D["Drill-in + lidský dohled<br/>(potvrdit / přepsat)"]
+    end
+
+    classDef llm fill:#e8f0fe,stroke:#4285f4;
+    classDef det fill:#e6f4ea,stroke:#34a853;
+    class P,Q,R,RE llm;
+    class C,V,S,K,RS det;
+```
+
+**Klíč k levné škále:** drahý LLM staví profil a tvoří verdikt jen na úzký výběr;
+osa skóre (pokrytí) je deterministická → recruiter může osu měnit donekonečna
+a vše se přepočítá zdarma.
+
 ---
 
 ## Proces ZÁJEMCE (krok po kroku — podle DEMO)
@@ -194,6 +232,19 @@ profil **jednou**; pak deterministický pre-filtr v SQL zúží inzeráty podle 
 domény a překryvu dovedností; každý zbylý inzerát se **deterministicky** oskóruje
 a vrátí se top-N; **LLM verdikt** (zdůvodnění) běží **jen na užší výběr**. Tím je
 hledání levné i ve velkém.
+
+```mermaid
+flowchart LR
+    Prof["🧠 Profil kandidáta<br/>(LLM, 1×)"] --> Pre["⚙️ SQL pre-filtr<br/>úroveň · doména · překryv dovedností<br/>5000 → ~50 inzerátů"]
+    Pre --> Sc["⚙️ Skórování každého inzerátu<br/>(deterministicky)"]
+    Sc --> Top["⚙️ Top-N podle pokrytí"]
+    Top --> Ver["🧠 AI verdikt<br/>jen na shortlist"]
+    classDef llm fill:#e8f0fe,stroke:#4285f4;
+    classDef det fill:#e6f4ea,stroke:#34a853;
+    class Prof,Ver llm;
+    class Pre,Sc,Top det;
+```
+
 → [`matcher/rank.py::rank_candidate`](src/cv_bau_students/matcher/rank.py) + [`jobads/repo.py::find_candidate_ads`](src/cv_bau_students/jobads/repo.py)
 
 ---
