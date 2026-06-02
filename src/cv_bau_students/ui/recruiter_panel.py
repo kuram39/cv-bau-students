@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from cv_bau_students.analytics.audit import audit_by_type, audit_csv
 from cv_bau_students.candidates import repo as candidates_repo
 from cv_bau_students.evidence import TIER_EMOJI, doloznost_label
 from cv_bau_students.explanation.format import parse_reasoning
@@ -63,6 +64,8 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
             "nebo spusť seed skript pro předvyplnění demo dat."
         )
 
+    _render_audit(target_ad.id)
+
     left, right = st.columns(2, gap="large")
     with left:
         st.markdown("### 📚 Students-with-potential")
@@ -79,6 +82,47 @@ def render_recruiter_panel(target_ad: JobAd | None) -> None:
         st.markdown("### 🔄 Career-changers")
         for summary in changers:
             _render_candidate_row(target_ad.id, summary)
+
+
+def _render_audit(ad_id: int) -> None:
+    """Selection-rate disclosure across candidate types (research #8). A
+    DISCLOSURE metric, not a pass/fail bar — the demo collects no protected
+    attributes, so this is auditability-by-design, not an adverse-impact audit."""
+    with st.expander("📊 Audit — doložitelnost skóre napříč typy kandidátů"):
+        report = audit_by_type(ad_id)
+        if not report["total"]:
+            st.caption("Zatím žádní kandidáti k auditu.")
+            return
+        st.caption(
+            f"Výběr = skóre ≥ {report['threshold']:.0f} %. "
+            "Metrika transparentnosti, ne automatické rozhodnutí (viz `docs/MODEL_CARD.md`)."
+        )
+        rows = [
+            {
+                "typ": g,
+                "n": row["n"],
+                "vybráno": row["selected"],
+                "míra výběru": row["selection_rate"],
+                "průměrné pokrytí %": row["mean_coverage"],
+            }
+            for g, row in report["groups"].items()
+        ]
+        st.table(rows)
+        ratio = report["four_fifths_ratio"]
+        if ratio is not None:
+            msg = f"Four-fifths poměr: **{ratio}**"
+            if report["adverse_impact"]:
+                st.warning(msg + " — < 0,80 → **prověř** rozložení (ne automatická akce).")
+            else:
+                st.caption(msg + " (≥ 0,80).")
+        else:
+            st.caption("Four-fifths poměr: nelze spočítat (málo dat / jen jedna skupina).")
+        st.download_button(
+            "⬇️ Stáhnout audit (CSV)",
+            data=audit_csv(report),
+            file_name=f"audit_ad_{ad_id}.csv",
+            mime="text/csv",
+        )
 
 
 def _render_job_description(target_ad: JobAd) -> None:
@@ -291,12 +335,42 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
                 tag = "✍️ vlastní"
             st.markdown(f"_{a.question_text}_  \n{a.answer_text}  \n`{tag}`")
 
+    # Human-oversight affordance after the verdict + answers, before raw sources.
+    _render_override_control(ad_id, candidate_id, detail)
+
     if detail.raw_cv_text:
         with st.expander("📄 Původní CV (raw text)"):
             st.text(detail.raw_cv_text)
 
     with st.expander("🔧 Raw profil JSON"):
         st.json(detail.profile.model_dump())
+
+
+def _render_override_control(ad_id: int, candidate_id: int, detail) -> None:
+    """Human-oversight affordance (EU AI Act Art. 14 / GDPR Art. 22): let the
+    recruiter contest / override the score, recording a note. The friction of an
+    explicit decision is what makes the human-in-the-loop real (research #8)."""
+    with st.expander("⚖️ Lidský dohled — potvrdit / přepsat skóre"):
+        if detail.recruiter_override is not None:
+            state = (
+                "❌ označeno jako nesprávné párování"
+                if detail.recruiter_override
+                else "✅ skóre potvrzeno"
+            )
+            when = detail.decision_at.strftime("%Y-%m-%d %H:%M") if detail.decision_at else "—"
+            st.caption(f"Poslední rozhodnutí: {state} · {when}")
+            if detail.override_note:
+                st.caption(f"Poznámka: {detail.override_note}")
+        with st.form(key=f"override_{ad_id}_{candidate_id}"):
+            flag = st.checkbox(
+                "Označit jako nesprávné párování (přepsat skóre)",
+                value=bool(detail.recruiter_override),
+            )
+            note = st.text_area("Poznámka (důvod rozhodnutí)", value=detail.override_note or "")
+            if st.form_submit_button("💾 Uložit rozhodnutí"):
+                candidates_repo.set_match_override(candidate_id, ad_id, override=flag, note=note)
+                st.success("Rozhodnutí uloženo (lidský dohled).")
+                st.rerun()
 
 
 def _render_reasoning(raw: str) -> None:

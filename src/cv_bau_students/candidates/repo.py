@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -78,6 +79,10 @@ class CandidateDetail(BaseModel):
     match: MatchScore
     role_answers: list[RoleAnswerView] = Field(default_factory=list)
     raw_cv_text: str | None = None  # original extracted CV text, for audit
+    # Human-oversight state (recruiter override / contest of the score).
+    recruiter_override: bool | None = None
+    override_note: str | None = None
+    decision_at: datetime | None = None
 
 
 # --- Helpers ---------------------------------------------------------------
@@ -341,6 +346,32 @@ def store_match(
             existing.skill_fit_detail_json = detail_json
 
 
+def set_match_override(
+    candidate_id: int,
+    ad_id: int,
+    *,
+    override: bool,
+    note: str | None = None,
+) -> bool:
+    """Record a recruiter's human-oversight decision on a Match.
+
+    `override=True` flags the match as contested / overridden (the recruiter
+    disagrees with the score); `note` is their free-text reason. Stamps
+    `decision_at`. Kept separate from `store_match` so `rescore_ad` never wipes
+    it. Returns False if no Match row exists. EU AI Act Art. 14 / GDPR Art. 22.
+    """
+    with get_session() as session:
+        m = session.execute(
+            select(Match).where(Match.candidate_id == candidate_id, Match.ad_id == ad_id)
+        ).scalar_one_or_none()
+        if m is None:
+            return False
+        m.recruiter_override = override
+        m.override_note = (note or "").strip() or None
+        m.decision_at = datetime.utcnow()
+    return True
+
+
 def rescore_ad(ad_id: int) -> int:
     """Re-run the deterministic matcher for every candidate with a Match on
     this ad and upsert the new scores. NO LLM — `score_match` is pure Python,
@@ -519,6 +550,9 @@ def get_candidate_detail(candidate_id: int, ad_id: int) -> CandidateDetail | Non
             match=match,
             role_answers=role_answers,
             raw_cv_text=cand.raw_cv_text,
+            recruiter_override=m.recruiter_override,
+            override_note=m.override_note,
+            decision_at=m.decision_at,
         )
 
 
