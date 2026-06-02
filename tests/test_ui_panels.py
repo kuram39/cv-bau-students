@@ -42,6 +42,7 @@ def _fake_st() -> MagicMock:
     st.columns.side_effect = _columns
     st.button.return_value = False
     st.form_submit_button.return_value = False
+    st.slider.return_value = 50  # audit threshold slider → numeric
     st.session_state = {}
     return st
 
