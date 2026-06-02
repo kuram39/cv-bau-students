@@ -93,7 +93,7 @@ def _step_upload() -> None:
     )
     uploaded = st.file_uploader("CV (PDF / DOCX / TXT / MD)", type=["pdf", "docx", "txt", "md"])
     if uploaded and st.button("🚀 Najít pozice", type="primary"):
-        with st.spinner("Zpracovávám CV (~4 LLM volání, ~30 s)…"):
+        with st.spinner("Zpracovávám CV (~2 LLM volání, ~30 s)…"):
             try:
                 result = run_generic_pass(
                     uploaded.getvalue(), uploaded.name, target_ad=_target_ad()
