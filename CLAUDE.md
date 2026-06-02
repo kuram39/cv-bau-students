@@ -38,7 +38,7 @@ GitHub: `buhlez31/cv-bau-students` (private, standalone — NOT a GitHub fork).
     interpretive calls). Lazy `_client()` import (cold import ~60s).
   - `config.py` — `LLM_MODEL = "claude-sonnet-4-6"` (default). **Quality mode:**
     flip to `"claude-opus-4-8"` (one line, documented in the comment) to A/B.
-    `LLM_THINK_MAX_TOKENS = 8192` headroom for thinking calls.
+    `LLM_THINK_MAX_TOKENS = 8000` headroom for thinking calls.
   - `db_models.py` — 16-table SQLAlchemy schema (candidates, taxonomy,
     skill_industry_map, level_checklists, job_ads, matches, role-specific Q&A,
     interests, reasoning_cache).
@@ -97,8 +97,9 @@ with an empty `email` skips it.
 - Deferred (candidates, not started):
   - LLM-cost optimisation (8→4 calls per applicant) — documented in `docs/RISKS.md`,
     planned for a `perf/llm-cost` branch.
-  - Diacritics-strip in `resolve_skill` (CV "dulni nakladac" w/o háčky → None).
-    (The resolver already strips diacritics; `resolve_skill` still doesn't.)
+  - Czech resolution lift: `resolve_skill` already has a diacritics fallback;
+    `scripts/measure_resolution.py` quantifies the real coverage % before any
+    further work (ESCO Czech-alias load / embeddings — gated on that number).
   - README/Mermaid refresh for the dual-panel flow; slide deck.
 - `docs/RISKS.md` is the interview answer-key (failure tiers, cost trade-off, scale).
 
