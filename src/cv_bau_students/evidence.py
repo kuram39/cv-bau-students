@@ -13,6 +13,7 @@ from __future__ import annotations
 
 # source_type → tier.
 _TIER: dict[str, str] = {
+    "work": "strong",  # real (non-brigáda) employment — delivered work, strongest
     "internship": "strong",
     "open_source": "strong",
     "certification": "strong",

@@ -24,7 +24,7 @@ Return a single JSON object — no prose, no markdown fences:
       "evidence_quote": "<verbatim substring from the profile JSON (project description, brigada description, summary, thesis_summary) that justifies this — max 200 chars>",
       "confidence": <float 0.0 - 1.0>,
       "caveat": "<short hedge in profile language, or null>",
-      "source_type": "thesis" | "school_project" | "internship" | "brigada" | "hobby" | "open_source" | "certification" | "course" | "language" | "other",
+      "source_type": "work" | "thesis" | "school_project" | "internship" | "brigada" | "hobby" | "open_source" | "certification" | "course" | "language" | "other",
       "relevance": "must_have" | "nice_to_have",
       "esco_term": "<standard ENGLISH ESCO skill label, even when `skill` is Czech — e.g. 'data cleansing', 'data modelling', 'database management systems', 'machine learning'. null only if nothing maps.>"
     }
@@ -49,10 +49,25 @@ as the human-readable name you'd show a recruiter).
 6. **Peak ≠ steady state.** "Processed 4M transactions/day" → record as peak in the caveat.
 7. **Team output ≠ individual ownership.** When team_size > 1 and the contribution split is unclear, record in the caveat.
 
+## Picking `source_type` (IMPORTANT)
+
+Derive `source_type` from WHERE in the profile the evidence sits — it drives the
+recruiter-facing "doloženost" (evidence strength), so a real job must not be
+mislabelled:
+
+- A `work_experience` entry with `is_brigada=false` → **`work`** — real, delivered
+  employment. This is the **strongest** evidence; **never default these to `other`**.
+  An experienced candidate's job-derived skills must be tagged `work`, not `other`.
+- A `work_experience` entry with `is_brigada=true` → `brigada`.
+- A short internship / praktikum role → `internship`.
+- thesis / school project / course / certification / open-source / hobby / language →
+  the matching type. Use `other` ONLY when nothing above fits (e.g. a bare summary claim).
+
 ## Source-type specific calibration
 
 | Source | Default confidence range | Typical caveat |
 |---|---|---|
+| `work` (real non-brigáda employment in/near target domain) | 0.6 – 0.85 | "verify individual ownership vs team output" |
 | `thesis` (with summary) | 0.6 – 0.75 | "academic project — production maturity not demonstrated" |
 | `school_project` (capstone, semester project) | 0.5 – 0.7 | "team project — individual scope unclear" (when team_size > 1) |
 | `internship` | 0.55 – 0.7 | "short tenure — exposure rather than ownership" |
@@ -156,7 +171,7 @@ Output:
       "evidence_quote": "vedl 12-člennou kuchyňskou směnu, koordinoval s dodavateli",
       "confidence": 0.65,
       "caveat": "Industry-different but skill-transferable",
-      "source_type": "other",
+      "source_type": "work",
       "relevance": "must_have"
     },
     {
@@ -172,7 +187,7 @@ Output:
       "evidence_quote": "vlastnil P&L",
       "confidence": 0.7,
       "caveat": "Restaurant scale, not product scale",
-      "source_type": "other",
+      "source_type": "work",
       "relevance": "nice_to_have"
     }
   ]

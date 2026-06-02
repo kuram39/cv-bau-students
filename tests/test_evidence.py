@@ -6,6 +6,7 @@ from cv_bau_students.evidence import doloznost_label, evidence_tier
 
 
 def test_tier_mapping():
+    assert evidence_tier("work") == "strong"  # real non-brigáda employment — strongest
     assert evidence_tier("internship") == "strong"
     assert evidence_tier("open_source") == "strong"
     assert evidence_tier("certification") == "strong"
