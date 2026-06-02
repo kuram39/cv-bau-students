@@ -123,6 +123,59 @@ def test_mechanical_model_respects_flag():
         assert llm.mechanical_model() == config.LLM_MODEL_CHEAP
 
 
+def _tool_use_message(payload: dict):
+    return SimpleNamespace(content=[SimpleNamespace(type="tool_use", input=payload)])
+
+
+def test_schema_ignored_when_structured_flag_off():
+    """schema= alone does nothing — the default text path is used."""
+    from cv_bau_students import config
+
+    msg = _fake_message(text='{"ok": true}')
+    client = _patched_client(msg)
+    with (
+        patch.object(llm, "_client", return_value=client),
+        patch.object(config, "LLM_STRUCTURED", False),
+    ):
+        out = llm.call_json("p", schema={"type": "object"})
+    assert out == {"ok": True}
+    _, kwargs = client.messages.create.call_args
+    assert "tools" not in kwargs
+
+
+def test_structured_flag_forces_tool_call_and_parses_input():
+    from cv_bau_students import config
+
+    client = _patched_client(_tool_use_message({"name": "Anna", "skills": ["SQL"]}))
+    with (
+        patch.object(llm, "_client", return_value=client),
+        patch.object(config, "LLM_STRUCTURED", True),
+    ):
+        out = llm.call_json("p", schema={"type": "object"})
+    assert out == {"name": "Anna", "skills": ["SQL"]}
+    _, kwargs = client.messages.create.call_args
+    assert kwargs["tool_choice"] == {"type": "tool", "name": "emit_result"}
+    assert kwargs["tools"][0]["input_schema"] == {"type": "object"}
+
+
+def test_structured_skipped_for_thinking_calls():
+    """Forced tool-use is NOT combined with extended thinking (SDK rough edge)."""
+    from cv_bau_students import config
+
+    msg = _fake_message(text='{"ok": true}', with_thinking=True)
+    client = _patched_client(msg)
+    with (
+        patch.object(llm, "_client", return_value=client),
+        patch.object(llm, "LLM_THINK_ENABLED", True),
+        patch.object(config, "LLM_STRUCTURED", True),
+    ):
+        out = llm.call_json("p", think=True, schema={"type": "object"})
+    assert out == {"ok": True}
+    _, kwargs = client.messages.create.call_args
+    assert "tools" not in kwargs  # text+thinking path, not tool-use
+    assert "thinking" in kwargs
+
+
 def test_no_text_block_raises_diagnostic_error():
     """Response with no text block → error names stop_reason + block types,
     not an empty 'First 500 chars' blank."""

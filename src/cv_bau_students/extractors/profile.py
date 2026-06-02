@@ -31,5 +31,9 @@ def extract_profile(cv_text: str, *, today: date | None = None) -> CandidateProf
         cv_text=cv_text,
         current_year=current_year,
     )
-    payload = llm.call_json(prompt, model=llm.mechanical_model())
+    payload = llm.call_json(
+        prompt,
+        model=llm.mechanical_model(),
+        schema=CandidateProfile.model_json_schema(),
+    )
     return CandidateProfile.model_validate(payload)
