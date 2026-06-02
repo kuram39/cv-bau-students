@@ -101,6 +101,20 @@ def test_audit_by_type_rates_and_four_fifths():
     assert rep["adverse_impact"] is True
 
 
+def test_audit_four_fifths_uses_unrounded_rates():
+    """4/9 vs 5/9 = exactly 0.8 → NOT adverse. Computing from the rounded display
+    rates (0.444/0.556 = 0.799) would falsely flag it."""
+    ad_id = _ad()
+    for i in range(9):
+        _seed(ad_id, kind="student", total=(80.0 if i < 4 else 30.0), tag=f"s{i}")
+    for i in range(9):
+        _seed(ad_id, kind="experienced", total=(80.0 if i < 5 else 30.0), tag=f"e{i}")
+    rep = audit_by_type(ad_id, threshold=50.0)
+    # exact ratio = (4/9)/(5/9) = 0.8 → not < 0.80
+    assert rep["four_fifths_ratio"] == 0.8
+    assert rep["adverse_impact"] is False
+
+
 def test_audit_single_group_ratio_undefined():
     ad_id = _ad()
     _seed(ad_id, kind="student", total=80.0, tag="only")

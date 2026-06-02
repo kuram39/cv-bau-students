@@ -15,6 +15,8 @@ docs/MODEL_CARD.md.
 
 from __future__ import annotations
 
+import math
+
 from cv_bau_students.candidates.repo import get_candidates_for_ad
 
 # The candidate types we report on, in display order.
@@ -43,11 +45,17 @@ def audit_by_type(ad_id: int, *, threshold: float = DEFAULT_THRESHOLD) -> dict:
             "mean_coverage": round(sum(s.total for s in members) / n, 1) if n else None,
         }
 
-    rates = [g["selection_rate"] for g in groups.values() if g["selection_rate"] is not None]
-    max_rate = max(rates) if rates else 0.0
-    if len(rates) >= 2 and max_rate > 0:
-        four_fifths = round(min(rates) / max_rate, 3)
-        adverse = four_fifths < 0.80
+    # Compute the four-fifths ratio from UNROUNDED selected/n — comparing the
+    # rounded display rates could flag (or clear) a near-0.80 case incorrectly.
+    raw_rates = [g["selected"] / g["n"] for g in groups.values() if g["n"]]
+    max_rate = max(raw_rates) if raw_rates else 0.0
+    if len(raw_rates) >= 2 and max_rate > 0:
+        ratio = min(raw_rates) / max_rate
+        four_fifths = round(ratio, 3)
+        # Exactly-0.80 is the boundary (the rule flags BELOW four-fifths); treat
+        # it as compliant, and use isclose so a float artifact like
+        # (4/9)/(5/9) = 0.7999999999999999 doesn't trip a false adverse flag.
+        adverse = ratio < 0.80 and not math.isclose(ratio, 0.80, rel_tol=1e-9)
     else:
         # <2 non-empty groups, or every rate 0 → ratio undefined (not enough data).
         four_fifths = None
