@@ -2,8 +2,9 @@
 
 Loads prompts from `prompts/*.md`, fills `{var}` placeholders via
 `str.replace` (so JSON braces in the prompt body don't need escaping),
-calls Claude (Opus 4.8), parses the JSON-only response. Determinism comes
-from the frozen prompts — Opus 4.8 removed the `temperature` parameter.
+calls Claude (model from `config.LLM_MODEL`, currently Sonnet 4.6), parses
+the JSON-only response. Determinism comes from the frozen prompts — the
+default `temperature` is used (Sonnet 4.6 keeps the parameter; we don't set it).
 
 Mirrors cv-estimator/llm.py — proven pattern, do not divergently
 refactor.
