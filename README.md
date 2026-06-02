@@ -123,7 +123,7 @@ Definice **vytažené přímo z kódu** (ne vymyšlené):
 | Hodnota | Co znamená | Zdroj |
 |---|---|---|
 | **Skill coverage %** | *headline skóre.* Podíl kurátorované cílové sady, který kandidát doloží: `100 × \|∩\| / \|cíl\|` (bez kurátorování = must ∪ nice z inzerátu). `total = coverage`. | `_skill_fit` |
-| **Bridge fit** | *potenciál (vedle headline).* Doplnitelnost mezer v měsících (0 → 100, 24 → 0); „jen praxí — bez zkratky" → strop **35**; bez rubriky → **N/A**. | `_bridge_fit` + `levels/repo.py` |
+| **Odhad doučení do role** | *potenciál (vedle headline).* Kolik **měsíců** odhadem do připravenosti na pozici = součet `bridgeable_in_months` přes chybějící dovednosti; „**+ praxe**" = mezera, co se nedá zkrátit kurzem/projektem (jen reálnou praxí); bez rubriky → **N/A**. | `bridge_estimate` + `levels/repo.py` |
 | **Doloženost 🟢🟡⚪** | čím je dovednost podložená: 🟢 praxe/stáž/cert · 🟡 projekt/studium · ⚪ jen uvedeno. Štítek **vysoká / střední / nízká**. | `evidence.py` |
 | **Counterfactual** | *„Doložit X → N % → M %"* — o kolik vyskočí pokrytí po doložení dané dovednosti. Bez LLM (GDPR/CJEU protipříklad). | `counterfactual_lifts` |
 | **AI zdůvodnění** | verdikt + silné stránky + mezery + otázky na pohovor; váží **doložené > uvedené**. | `reasoning.md` |

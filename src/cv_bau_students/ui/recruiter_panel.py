@@ -16,7 +16,7 @@ from cv_bau_students.candidates import repo as candidates_repo
 from cv_bau_students.evidence import TIER_EMOJI, doloznost_label
 from cv_bau_students.explanation.format import parse_reasoning
 from cv_bau_students.jobads import repo as jobads_repo
-from cv_bau_students.matcher.score import counterfactual_lifts
+from cv_bau_students.matcher.score import bridge_estimate, counterfactual_lifts
 from cv_bau_students.models import JobAd
 
 TYPE_BADGE = {
@@ -278,8 +278,32 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
     # personal_fit retired (not shown).
     c1, c2 = st.columns(2)
     c1.metric("Skill coverage", f"{m.skill_fit:.0f} %")
-    bridge_display = f"{m.bridge_fit:.0f}" if m.bridge_fit >= 0 else "N/A"
-    c2.metric("Bridge fit (potenciál)", bridge_display)
+    # Bridge as a graspable "how long to ready this candidate" estimate in months,
+    # not the abstract 0–100 index. bridge_fit < 0 → no rubric → N/A.
+    if m.bridge_fit < 0:
+        c2.metric("Odhad doučení do role", "N/A", help="pro tuto doménu/úroveň není rubrika")
+    else:
+        est = bridge_estimate(m.bridge_plan)
+        if est["gaps"] == 0:
+            c2.metric("Odhad doučení do role", "0 měs.", help="pokrývá rubriku — připraven hned")
+        elif est["bridgeable"] and est["experience_only"]:
+            c2.metric(
+                "Odhad doučení do role",
+                f"~{est['months']} měs. + praxe",
+                help="část mezer se nedá zkrátit kurzem/projektem — jen reálnou praxí",
+            )
+        elif est["bridgeable"]:
+            c2.metric(
+                "Odhad doučení do role",
+                f"~{est['months']} měs.",
+                help="odhad doučení chybějících dovedností na úroveň pozice",
+            )
+        else:
+            c2.metric(
+                "Odhad doučení do role",
+                "jen praxí",
+                help="chybějící dovednosti vyžadují reálnou praxi — bez zkratky",
+            )
 
     # Honest precision (research #8): when the matched skills are mostly *claimed*
     # (weak evidence) rather than demonstrated, flag the coverage as orientational.
@@ -300,7 +324,11 @@ def _render_detail(ad_id: int, candidate_id: int) -> None:
     )
 
     if m.bridge_plan:
-        st.markdown("**Bridge plan** (co doplnit pro vyšší úroveň):")
+        est = bridge_estimate(m.bridge_plan)
+        summ = f"~{est['months']} měs. doučení"
+        if est["experience_only"]:
+            summ += f" + {est['experience_only']} dovedností jen praxí"
+        st.markdown(f"**Plán doučení** — {summ} (co doplnit na úroveň pozice):")
         for gap in m.bridge_plan:
             when = (
                 f"~{gap.bridgeable_in_months} měs."
