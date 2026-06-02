@@ -53,99 +53,36 @@ Celý proces na jednom obrázku. 🧠 = krok s jazykovým modelem (drahý, běž
 > — diagram níže je textová (GitHub-native) verze téhož.
 
 ```mermaid
-flowchart TD
-    subgraph Z["👤 ZÁJEMCE"]
-        U[Nahraje CV] --> P["🧠 Převod CV → dovednosti<br/>(+ citace, typ zdroje)"]
-        P --> C["⚙️ Klasifikace typu kandidáta<br/>vůči pozici"]
-        C --> V["⚙️ Náhled pozice + 'proč ti sedne'<br/>(bez skóre)"]
-        V --> I[Vyjádří zájem]
-        I --> Q["🧠 AI dotazník<br/>(generován 1× na inzerát)"]
-        Q --> A[Vyplní odpovědi]
-    end
-
-    A --> R["🧠 Re-překlad s odpověďmi"]
-    R --> S["⚙️ Skórování<br/>pokrytí cílové sady + doloženost + bridge"]
-    S --> RE["🧠 AI verdikt<br/>(jen pro vybranou pozici / shortlist)"]
-    RE --> DB[("📦 Uložení: profil, dovednosti, skóre")]
-
-    subgraph N["🧑‍💼 RECRUITER"]
-        DB --> K["⚙️ Kurátoruje cílové dovednosti<br/>(core / optional)"]
-        K -->|uložení| RS["⚙️ Přepočet VŠECH kandidátů<br/>(deterministicky, bez LLM)"]
-        RS --> L["Seřazený seznam:<br/>% pokrytí · doloženost · verdikt"]
-        L --> D["Drill-in + lidský dohled<br/>(potvrdit / přepsat)"]
-    end
-
-    classDef llm fill:#e8f0fe,stroke:#4285f4;
-    classDef det fill:#e6f4ea,stroke:#34a853;
-    class P,Q,R,RE llm;
-    class C,V,S,K,RS det;
+flowchart LR
+    U([CV]) --> P["🧠 CV → dovednosti"] --> C["⚙️ klasifikace typu"] --> Q["🧠 AI dotazník"] --> S["⚙️ skórování<br/>pokrytí·doloženost·bridge"] --> RE["🧠 verdikt"] --> DB[("uložení")]
+    DB --> K["⚙️ náborář:<br/>cílové dovednosti"] -->|"↻ zdarma"| RS["⚙️ přepočet všech"] --> L(["seznam · drill-in · dohled"])
+    classDef llm fill:#e8f0fe,stroke:#1b4f9c,color:#14181f;
+    classDef det fill:#e7f3ea,stroke:#2f7d4f,color:#14181f;
+    class P,Q,RE llm;
+    class C,S,RS det;
 ```
 
-**Klíč k levné škále:** drahý LLM staví profil a tvoří verdikt jen na úzký výběr;
-osa skóre (pokrytí) je deterministická → náborář může osu měnit donekonečna
-a vše se přepočítá zdarma.
+**Klíč k levné škále:** drahý 🧠 LLM staví profil a verdikt jen na úzký výběr;
+osa skóre je ⚙️ deterministická → náborář ji mění donekonečna a vše se přepočítá
+zdarma. *(Plný vizuál: [poster](docs/process-poster.png).)*
 
 ---
 
-## Proces ZÁJEMCE (krok po kroku — podle DEMO)
+## Proces ZÁJEMCE (podle DEMO)
 
-U každého kroku: **(a)** co kandidát vidí/dělá · **(b)** co se děje na pozadí ·
-**(c)** rozdíl *DEMO* vs *plné nasazení*.
+| # | Co kandidát dělá / vidí | Na pozadí | DEMO → nasazení |
+|---|---|---|---|
+| 1 | Nahraje CV + vidí oznámení *„hodnotíme dovednosti, ne osobní údaje"* | extrakce profilu, **slepá k pohlaví/věku/jménu** | stejné |
+| 2 | Profil zpracován + štítek typu 📚/🔄/💼 | 🧠 CV → dovednosti (citace + typ zdroje); ⚙️ **klasifikace typu vůči pozici** (přebíjí odhad LLM) | DEMO: 1 inzerát · nasazení: korpus |
+| 3 | Náhled pozice + „proč ti sedne" — **bez skóre** | ⚙️ porovnání dovedností, bez LLM → okamžité | stejné |
+| 4 | „Mám zájem" → 2–3 cílené otázky | 🧠 dotazník **odkrývá skryté dovednosti**; 1× na inzerát, všem stejné | DEMO: prázdné · nasazení: AI-předvyplnění |
+| 5 | Odpoví vlastními slovy a odešle | 🧠 odpovědi → profil → re-překlad → ⚙️ **přeskórování** | stejné |
+| 6 | Potvrzení odeslání | kandidát viditelný náboráři | stejné |
 
-### 1. Nahrání CV
-- **(a)** Kandidát nahraje CV (PDF / DOCX / TXT). Nahoře vidí **transparentní
-  oznámení**: „Používáme AI k převodu CV na dovednosti; hodnotíme dovednosti, ne
-  osobní údaje; skóre je podpora pro náboráře — rozhoduje člověk."
-- **(b)** Z textu se vytáhne strukturovaný profil (vzdělání, projekty, brigády,
-  dovednosti, jazyky). Extrakce je **slepá k pohlaví/věku/jménu** — ta do skóre
-  nevstupují.
-- **(c)** *DEMO i nasazení stejné.*
-
-### 2. Zpracování profilu
-- **(a)** Po pár sekundách kandidát vidí, že profil byl zpracován + štítek typu
-  (📚 student / 🔄 kariérní změna / 💼 zkušený).
-- **(b)** Dvě věci: **(1)** dovednosti z CV se „přeloží" na taxonomicky
-  uchopitelné dovednosti (např. *„diplomka na NLP v Pythonu"* → *Python, strojové
-  učení, zpracování textu*), každá s **citací z CV** a **typem zdroje** (praxe /
-  projekt / brigáda…). **(2)** Deterministický klasifikátor určí **typ kandidáta
-  vůči cílové pozici** (viz [`detector/classify.py`](src/cv_bau_students/detector/classify.py)):
-  < 2 roky reálné praxe / jen brigády / studuje / čerstvý absolvent → *student*;
-  ≥ 2 roky práce v *jiném* oboru než pozice → *kariérní změna*; ≥ 2 roky práce
-  v souladu s pozicí → *zkušený*. Tento Pythonový verdikt **přebíjí** odhad LLM.
-- **(c)** **DEMO:** profil se rovnou porovnává s **jedním** inzerátem (předaným
-  do procesu jako cílová pozice). **Nasazení:** profil se hledá napříč **korpusem
-  inzerátů** — to už je v kódu hotové (viz „DEMO vs plné nasazení" níže).
-
-### 3. Náhled pozice + „proč ti sedne"
-- **(a)** Kandidát vidí detail pozice (popis, klíčové dovednosti, jazyky) a krátké
-  **deterministické** shrnutí „proč ti sedne" (které dovednosti sedí, co chybí).
-  **Skóre se kandidátovi nezobrazuje.**
-- **(b)** Shrnutí se skládá z výsledku porovnání dovedností — **bez LLM**, takže
-  je okamžité a reprodukovatelné.
-- **(c)** *DEMO i nasazení stejné* (v nasazení by zde byl výběr z více pozic).
-
-### 4. Vyjádření zájmu → AI dotazník
-- **(a)** Kandidát klikne „Mám zájem" a dostane **2–3 cílené otázky** k pozici
-  (např. „popište situaci, kdy jste pomocí SQL řešil/a netriviální analytický
-  problém").
-- **(b)** Otázky **odkrývají skryté dovednosti**, které z CV nejsou vidět. Jsou
-  **vygenerované jen jednou na inzerát** a všem kandidátům se kladou stejné
-  (férovost + úspora).
-- **(c)** **DEMO:** odpovědi v seedu jsou prázdné (žádné AI-vymyšlené odpovědi).
-  **Nasazení:** systém umí pole **předvyplnit** návrhem vytaženým z CV, kandidát
-  ho přijme nebo přepíše.
-
-### 5. Vyplnění odpovědí → přepočet
-- **(a)** Kandidát odpoví vlastními slovy a odešle.
-- **(b)** Odpovědi se **promítnou do profilu**, dovednosti se znovu přeloží a
-  pozice se **přeskóruje** — to, co kandidát doplnil, se může objevit jako nová
-  doložená dovednost.
-- **(c)** *DEMO i nasazení stejné.*
-
-### 6. Potvrzení
-- **(a)** Potvrzovací karta „přihláška odeslána". Kandidát je teď viditelný
-  v náborářském pohledu.
-- **(c)** *DEMO i nasazení stejné.*
+*Typ kandidáta určí deterministický klasifikátor vůči pozici:
+< 2 roky reálné praxe / jen brigády / studuje → **student**; ≥ 2 roky v jiném oboru
+→ **kariérní změna**; ≥ 2 roky v souladu → **zkušený**.
+→ [`detector/classify.py`](src/cv_bau_students/detector/classify.py)*
 
 > **DEMO specifika:** seed obsahuje **6 syntetických CV** (3 studenti + 3 zkušení,
 > všechny smyšlené) a **jeden inzerát** „Datový analytik / Datová analytička"
@@ -156,68 +93,30 @@ U každého kroku: **(a)** co kandidát vidí/dělá · **(b)** co se děje na p
 
 ## Proces RECRUITER (podle DEMO)
 
-### 1. Hlavička pozice + transparentní banner
-Náborář vidí pozici a banner: *„Skóre = podpora rozhodování, ne automatické
-odmítnutí — finální rozhodnutí je na tobě. Hodnotíme dovednosti, ne osobní údaje."*
+1. **Banner**: *skóre = podpora rozhodnutí, ne automatické odmítnutí.*
+2. **Skill-picker** — náborář kurátoruje **cílovou sadu** (core / optional;
+   návrh z ISCO povolání inzerátu). Uložení **přepočítá všechny kandidáty
+   deterministicky**. Tahle sada je **porovnávací osa**.
+3. **Sloupce** Studenti / Zkušení / Career-changers — stejná osa, oddělené zobrazení.
+4. **Řádek**: jméno · % pokrytí · doloženost → rozklik = **drill-in**.
 
-### 2. Skill-picker (kurátorování cílové sady)
-Náborář vybere dovednosti, které pro roli **skutečně** vyžaduje — rozdělené na
-**core** (klíčové) a **optional** (výhodou). Návrh dovedností se nabízí z povolání
-(ISCO) odvozeného z inzerátu. **Uložení okamžitě přepočítá všechny kandidáty —
-deterministicky, bez LLM.** Tahle kurátorovaná sada je **porovnávací osa**: každý
-kandidát se měří jejím pokrytím.
+### Drill-in — „Co která hodnota znamená"
 
-### 3. Sloupce: Studenti / Zkušení / Career-changers
-Kandidáti jsou zobrazeni v oddělených sloupcích podle typu — **stejná osa, jen
-oddělené zobrazení**, aby šel student srovnat se studentem a zkušený se zkušeným,
-ale na shodné metrice.
+Definice **vytažené přímo z kódu** (ne vymyšlené):
 
-### 4. Řádek kandidáta
-Kompaktní řádek: jméno · **% pokrytí** · **doloženost**. Rozkliknutím se otevře
-drill-in.
+| Hodnota | Co znamená | Zdroj |
+|---|---|---|
+| **Skill coverage %** | *headline skóre.* Podíl kurátorované cílové sady, který kandidát doloží: `100 × \|∩\| / \|cíl\|` (bez kurátorování = must ∪ nice z inzerátu). `total = coverage`. | `_skill_fit` |
+| **Bridge fit** | *potenciál (vedle headline).* Doplnitelnost mezer v měsících (0 → 100, 24 → 0); „jen praxí — bez zkratky" → strop **35**; bez rubriky → **N/A**. | `_bridge_fit` + `levels/repo.py` |
+| **Doloženost 🟢🟡⚪** | čím je dovednost podložená: 🟢 praxe/stáž/cert · 🟡 projekt/studium · ⚪ jen uvedeno. Štítek **vysoká / střední / nízká**. | `evidence.py` |
+| **Counterfactual** | *„Doložit X → N % → M %"* — o kolik vyskočí pokrytí po doložení dané dovednosti. Bez LLM (GDPR/CJEU protipříklad). | `counterfactual_lifts` |
+| **AI zdůvodnění** | verdikt + silné stránky + mezery + otázky na pohovor; váží **doložené > uvedené**. | `reasoning.md` |
+| **Confidence band** | ± pásmo z jistoty překladu (`max(5, 30 − 25·avg)`) → varování *„nízká doloženost"*, když převažuje ⚪. | `_confidence_band` |
+| **Lidský dohled** | náborář **potvrdí / přepíše** skóre s poznámkou (AI Act čl. 14 / GDPR čl. 22). | override |
+| **Audit napříč typy** | míra výběru + four-fifths poměr napříč typy — *transparentní metrika, ne pass/fail brána*. | `analytics/audit.py` |
 
-### 5. Drill-in — „Co která hodnota znamená"
-
-Definice níže jsou **vytažené přímo z kódu** (ne vymyšlené):
-
-- **Skill coverage (% pokrytí)** — *podíl kurátorované cílové sady, který kandidát
-  doloží.* Spočítá se jako `100 × |doložené ∩ cílová sada| / |cílová sada|`. Když
-  náborář ještě nic nekurátoroval, denominátorem jsou must-have ∪ nice-to-have
-  z inzerátu. Toto je **headline skóre** (`total = skill coverage`).
-  → [`matcher/score.py::_skill_fit`](src/cv_bau_students/matcher/score.py)
-- **Bridge fit (potenciál)** — *sekundární signál růstu*: jak snadno jsou
-  doplnitelné mezery do dané úrovně. Škála je v měsících (0 měs. → 100,
-  24 měs. → 0); pokud je mezera **„jen praxí — bez zkratky"**, skóre se zastropí
-  na **35**; pokud pro danou doménu/úroveň **chybí rubrika**, ukáže se **N/A**
-  (interně `-1.0`). **Není** součástí headline skóre — stojí vedle.
-  → [`matcher/score.py::_bridge_fit`](src/cv_bau_students/matcher/score.py) + [`levels/repo.py`](src/cv_bau_students/levels/repo.py)
-- **Doloženost 🟢🟡⚪** — *čím je dovednost podložená:* 🟢 prokázané praxí
-  (stáž / open-source / certifikace) · 🟡 projekt/studium (diplomka / školní
-  projekt / kurz) · ⚪ jen uvedeno (brigáda / hobby / jazyk / pouhý zápis v CV).
-  Souhrnný štítek: **vysoká** (alespoň polovina doložených je 🟢) · **nízká**
-  (většina je ⚪) · jinak **střední**. Nahrazuje dřívější „sebejistotu LLM".
-  → [`evidence.py`](src/cv_bau_students/evidence.py)
-- **Counterfactual „Doložit X → N % → M %"** — *konkrétní návod, jak skóre zvýšit:*
-  u každé chybějící cílové dovednosti se spočítá, na kolik procent by pokrytí
-  vyskočilo, kdyby ji kandidát doložil (přidání jedné dovednosti do čitatele).
-  Bez LLM, bez přepočtu. GDPR/CJEU doporučené „vysvětlení přes protipříklad".
-  → [`matcher/score.py::counterfactual_lifts`](src/cv_bau_students/matcher/score.py)
-- **AI zdůvodnění** — verdikt („spíše ano / spíše ne" + jednověté proč),
-  **silné stránky** a **mezery** a **otázky na pohovor**. Jediné interpretační
-  místo, kde LLM tvoří názor — a váží **doložené nad pouze uvedeným**.
-- **Confidence band** — „± pásmo" kolem skóre podle průměrné jistoty překladu
-  (`max(5, 30 − 25 · průměr)`); v UI se promítá do varování *„nízká doloženost —
-  skóre orientační"*, když jsou doložené dovednosti převážně ⚪.
-  → [`matcher/score.py::_confidence_band`](src/cv_bau_students/matcher/score.py)
-- **Lidský dohled / přepis** — náborář může párování **označit jako nesprávné
-  / přepsat skóre** s poznámkou (zaznamenané rozhodnutí). To je ten skutečný
-  „člověk rozhoduje" — soulad s EU AI Act čl. 14 / GDPR čl. 22.
-- **Audit napříč typy** — tabulka „doložitelnost / míra výběru" napříč typy
-  kandidátů (student / kariérní změna / zkušený) s four-fifths poměrem — jako
-  *transparentní metrika*, ne pass/fail brána (demo nesbírá citlivé údaje).
-
-Drill-in je seřazený **shora dolů jako prezentace**: skóre → pokrytí a doloženost →
-přeložené dovednosti → **AI verdikt** → vlastní odpovědi kandidáta → původní CV.
+Drill-in čte **shora dolů jako prezentace**: skóre → pokrytí + doloženost →
+dovednosti → **AI verdikt** → odpovědi kandidáta → původní CV.
 
 ---
 
@@ -259,13 +158,6 @@ Diagramy (vrstvy, sekvence cesty kandidáta, datový model), přesná scoring
 matematika a odkazy do kódu (file\:line) jsou v
 **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**. Compliance a limity:
 **[`docs/MODEL_CARD.md`](docs/MODEL_CARD.md)**.
-
-## Spuštění a nasazení
-
-Instalace, lokální běh a deploy (Streamlit Cloud + Postgres/Neon) jsou
-v anglické referenční verzi: [`docs/README.en.md`](docs/README.en.md) ·
-[`docs/DEPLOY.md`](docs/DEPLOY.md). Aplikace je dvouzáložkový Streamlit
-(**Kandidát** / **Recruiter**).
 
 ## Data a atribuce
 
