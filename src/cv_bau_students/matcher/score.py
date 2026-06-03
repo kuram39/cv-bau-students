@@ -74,7 +74,7 @@ def score_match(
         skill_fit=round(skill_fit, 1),
         # Bridge_fit is a float ≥ 0; -1.0 encodes "no rubric" (UI shows N/A).
         bridge_fit=round(bridge_fit, 1) if bridge_fit is not None else -1.0,
-        personal_fit=0.0,  # retired from the product (schema field kept)
+        personal_fit=0.0,  # retired from the product — drop column in next schema migration (F5)
         total=round(total, 1),
         confidence_band=round(band, 1),
         bridge_plan=gaps,
@@ -265,6 +265,12 @@ def _confidence_band(capabilities: list[TranslatedCapability]) -> float:
 
     Average confidence 1.0 → ±5 band. Average 0.5 → ±18. Average 0.3 →
     ±26.
+
+    TODO (F3): this still uses the LLM self-reported `confidence` float, which
+    is the same signal the evidence-tier reform (#28) replaced for tier labels.
+    Derive the band from tier distribution instead — strong-majority → narrow,
+    weak-majority → wide — using the `tier_by_id` dict already computed in
+    `score_match`. The LLM float is uncalibrated; tiers are structural.
     """
     if not capabilities:
         return 30.0

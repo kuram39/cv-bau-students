@@ -44,7 +44,12 @@ def doloznost_label(tiers: list[str]) -> str:
     """Overall evidence-strength of a candidate's matched skills, in Czech.
 
     'vysoká' when at least half the matched skills are strong-evidenced;
-    'nízká' when most are claim-only; else 'střední'. Empty → 'nízká'."""
+    'nízká' when most are claim-only; else 'střední'. Empty → 'nízká'.
+
+    TODO (F4): 50 % threshold for 'vysoká' is generous — a profile with exactly
+    half strong + half claimed-only still gets the top label. Consider raising to
+    `strong * 3 >= n * 2` (≥ 67 %) for SFIA-aligned "clear majority" semantics.
+    """
     if not tiers:
         return "nízká"
     n = len(tiers)
