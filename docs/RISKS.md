@@ -180,6 +180,28 @@ until measured.
 This document is the answer key for the round-2 interview — not the
 roadmap. The roadmap is whatever real users break first.
 
+## Binary seed carries LLM-derived state — no keyless rebuild path
+
+`seed.sqlite.gz` is the primary cold-start source for Cloud/Neon deploys.
+After rebakes in PRs #34 and #49 it now carries translated capabilities,
+evidence tiers, and match scores produced by prior LLM runs. If the schema
+changes (new non-nullable column, type change) before the next rebake, the
+seed becomes unloadable and recovery requires ~40 LLM calls with the owner's
+key — there is no committed "rebuild from scratch without a key" path.
+
+**Mitigation (deferred):** add `scripts/smoke_seed.py` — verifies the gzip
+loads and key tables are populated; runs in CI without a key. Catches schema
+drift before it breaks Cloud deploys.
+
+## Bias audit four-fifths ratio requires minimum group size
+
+With 6 demo candidates (≤2 per type), the four-fifths ratio is a ratio of
+tiny integers. A 1-of-1 student "passing" reads as 100 % selection rate;
+0-of-1 reads as 0 %. Correct for a transparency *display*, but statistically
+void — the typical threshold for a meaningful four-fifths test is N≥30 per
+group. `docs/MODEL_CARD.md` should note this floor so presenters don't
+over-interpret the demo audit output. (**⏳ add a note to MODEL_CARD**)
+
 ## Known gap — corpus prefilter ignores curated target skills (deferred)
 
 `rank_candidate`'s SQL prefilter (`find_candidate_ads`) builds `skill_ids_any`
