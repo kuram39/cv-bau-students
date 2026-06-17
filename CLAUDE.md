@@ -45,14 +45,15 @@ GitHub: `buhlez31/cv-bau-students` (private, standalone — NOT a GitHub fork).
   - `translator/translate.py`, `explanation/reason.py` — the 2 interpretive LLM
     calls (`think=True`). Everything else (extraction, classify, prefill) is
     thinking-off to keep cost down.
-  - `matcher/` — 3-axis scoring (skill_fit / bridge_fit / personal_fit), SQL
+  - `matcher/` — skill-coverage scoring (`total = skill_fit`; `bridge_fit` is
+    a secondary months-to-ready signal; `personal_fit` retired to 0.0), SQL
     pre-filter + hard filter. `taxonomy/repo.py` has `resolve_skill` +
     `expected_skills_for_isco`.
   - `ui/app.py` + `ui/candidate_panel.py` + `ui/recruiter_panel.py` — two-tab
     Streamlit (Kandidát upload journey / Recruiter scored list). Candidate side
     hides the numeric score; only the recruiter sees scoring.
-  - `bootstrap.py` — `ensure_seeded()` restores from `data/seed.sqlite.gz` (full
-    ESCO) on cold start; `prewarm_llm()` daemon.
+  - `bootstrap.py` — `ensure_seeded()` restores from `data/seed.sqlite.gz`
+    (role-scoped ~2k rows, sub-second cold start) on cold start; `prewarm_llm()` daemon.
   - `prompts/*.md` — all LLM prompts (skepticism rules live in
     `translate_capabilities.md`).
 - `scripts/` — loaders + seed: `load_esco_csv.py` (raw ESCO from
@@ -64,12 +65,11 @@ GitHub: `buhlez31/cv-bau-students` (private, standalone — NOT a GitHub fork).
 
 ## Taxonomy / data
 
-- **ESCO v1.2.x** (CC BY 4.0) is the primary skill taxonomy — full set lives in
-  `src/cv_bau_students/data/seed.sqlite.gz` (~9.2 MB, committed). ~14k skills +
-  19k hierarchy edges + 70k occupation→skill rows + ~6k occupation labels
-  (en+cs, `occupations` table, drives the role→ISCO resolver). Universal
-  coverage (every field, not just IT). Rebuild loaders incl.
-  `scripts/load_esco_occupation_labels.py`, then `scripts/build_cloud_seed.py`.
+- **ESCO v1.2.x** (CC BY 4.0) is the primary skill taxonomy — the committed
+  seed (`src/cv_bau_students/data/seed.sqlite.gz`, ~104 KB) is **role-scoped**
+  to the data-analyst demo (~2k rows: data-role skill family ∪ demo CVs/ad).
+  Full ESCO (~200k rows) lives in `data/raw_esco/` (gitignored). Rebuild:
+  loaders → `scripts/build_scoped_seed.py`. `DATA_ROLE_URIS` controls the scope.
 - **Czech NSP/CDK** (CC0) layered on top.
 - Attribution required: see `NOTICES.md`; UI footer + README "Data Sources".
 
@@ -88,20 +88,45 @@ with an empty `email` skips it.
 
 ## Current state / open items
 
-- Phases 1–12 shipped. Model on Sonnet 4.6 + selective thinking (PRs #1–#3 merged).
-- Target-role-first scoring + recruiter audit shipped (`feat/target-role-scoring`):
-  ads resolve to an ISCO occupation (`roles/isco_resolver.py`, lexical→LLM);
-  `expected_skills_for_isco()` now feeds skill_fit as a capped enrichment bonus +
-  gap surface (`matcher/score.py`, `SkillFitDetail`); recruiter drill-in shows the
-  breakdown + original CV text (`Candidate.raw_cv_text`).
-- Deferred (candidates, not started):
-  - LLM-cost optimisation (8→4 calls per applicant) — documented in `docs/RISKS.md`,
-    planned for a `perf/llm-cost` branch.
-  - Czech resolution lift: `resolve_skill` already has a diacritics fallback;
-    `scripts/measure_resolution.py` quantifies the real coverage % before any
-    further work (ESCO Czech-alias load / embeddings — gated on that number).
-  - README/Mermaid refresh for the dual-panel flow; slide deck.
-- `docs/RISKS.md` is the interview answer-key (failure tiers, cost trade-off, scale).
+**51 PRs merged as of 2026-06-17.** Platform is feature-complete for the
+data-analyst demo. Test suite: **219 passing**. Postgres (Neon) + Streamlit
+Cloud deploy live.
+
+### What's shipped
+- Single-target MVP: all CVs scored against one recruiter-curated ad.
+  `total == skill_fit` = % coverage of the curated target skill set.
+- Evidence tiers (`doloženost`): work > thesis/project > hobby/claimed.
+  `work` source_type → strong tier (real employment is no longer shown weak).
+- Candidate-type classifier vs the target ad: `student` / `career_changer` /
+  `experienced` based on real (non-brigáda) work years + field alignment.
+- Counterfactual recourse (GDPR Art. 22): "Add skill X → coverage N%→M%".
+- Human oversight: recruiter override + decision log. Bias audit by candidate type.
+- Bridge-fit as months-to-ready estimate (not an abstract index).
+- Audit threshold slider for the recruiter's four-fifths fairness check.
+- Role-scoped seed (data-analyst family): cold start sub-second on Neon.
+- `docs/ARCHITECTURE.md` + `docs/ARCHITECTURE.cs.md` (Czech) + Czech README.
+- Model Card (`docs/MODEL_CARD.md`): EU AI Act high-risk, GDPR, demographic-blind.
+
+### Open PRs (flag-gated, need owner A/B)
+- **#39 Haiku model-tiering** — mechanical calls at 3× lower cost. Blocked on
+  `./venv/bin/python -m scripts.ab_extract` (needs key). If Jaccard ≥ 0.85 on
+  Czech CVs → safe to enable `CV_BAU_STUDENTS_TIER=1`.
+- **#40 Haiku A/B harness** — the script that validates the above.
+- **#41 Structured output** — forced tool-use JSON (eliminates fence-strip).
+- **#42 Prompt caching** — cache the static prefix of `extract_profile.md`.
+  Merge order: #39 → #40 → #41 → #42 (retarget each to `main`).
+
+### Key deferred / unconfirmed
+- **`measure_resolution.py` not yet run** — script is committed (#36), but the
+  actual Czech resolution % is still "estimated ~33%". Run:
+  `./venv/bin/python -m scripts.measure_resolution` (no key needed). Result
+  determines whether ESCO Czech-alias load is worth doing.
+- **Second demo role** — `level_checklists` only covers `data-analyst`.
+  Any other ad domain → `bridge_fit = N/A`. Documented in RISKS.md.
+- **`WEIGHT_*` constants in `config.py`** — annotated as UNUSED since #22.
+  Delete in a `chore/cleanup` PR when convenient.
+- **Slide deck** — not started.
+- `docs/RISKS.md` is the interview answer-key (failure tiers, cost, scale).
 
 ## Gotchas
 
