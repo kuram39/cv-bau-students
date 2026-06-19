@@ -16,6 +16,7 @@ import re
 from functools import lru_cache
 from typing import Any
 
+from cv_bau_students import config
 from cv_bau_students.config import (
     LLM_MAX_TOKENS,
     LLM_MODEL,
@@ -24,6 +25,16 @@ from cv_bau_students.config import (
     LLM_THINK_MAX_TOKENS,
     PROMPTS_DIR,
 )
+
+
+def mechanical_model() -> str:
+    """Model for the cheap, mechanical calls (extraction / classify / role-Q gen).
+
+    Returns the Haiku tier when `CV_BAU_STUDENTS_TIER=1` (config.LLM_TIER_MECHANICAL),
+    else the default model — so routing is a no-op until the owner opts in. Read
+    live from `config` so the env flag (and tests) take effect without re-import.
+    """
+    return config.LLM_MODEL_CHEAP if config.LLM_TIER_MECHANICAL else config.LLM_MODEL
 
 
 @lru_cache(maxsize=1)
@@ -72,7 +83,13 @@ def _strip_fences(text: str) -> str:
     return m.group(1).strip() if m else text.strip()
 
 
-def call_json(prompt: str, *, max_tokens: int = LLM_MAX_TOKENS, think: bool = False) -> dict:
+def call_json(
+    prompt: str,
+    *,
+    max_tokens: int = LLM_MAX_TOKENS,
+    think: bool = False,
+    model: str | None = None,
+) -> dict:
     """Send a single-turn prompt expecting strict JSON output. Returns parsed dict.
 
     `think=True` enables extended thinking with an explicit `budget_tokens`
@@ -88,7 +105,7 @@ def call_json(prompt: str, *, max_tokens: int = LLM_MAX_TOKENS, think: bool = Fa
     response are ignored for parsing regardless of this flag.
     """
     kwargs: dict = {
-        "model": LLM_MODEL,
+        "model": model or LLM_MODEL,
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }

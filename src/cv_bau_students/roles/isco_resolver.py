@@ -143,7 +143,7 @@ def _llm_pick(
         options=options,
     )
     try:
-        payload = llm.call_json(prompt, max_tokens=200)
+        payload = llm.call_json(prompt, max_tokens=200, model=llm.mechanical_model())
     except (ValueError, RuntimeError):
         return None
     code = payload.get("isco_code")

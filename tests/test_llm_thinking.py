@@ -97,6 +97,32 @@ def test_thinking_block_does_not_corrupt_json_parse():
     assert json.dumps(out)  # round-trips
 
 
+def test_model_override_threads_through():
+    """An explicit model= reaches messages.create; default uses LLM_MODEL."""
+    from cv_bau_students.config import LLM_MODEL
+
+    msg = _fake_message(text="{}")
+    client = _patched_client(msg)
+    with patch.object(llm, "_client", return_value=client):
+        llm.call_json("prompt", model="claude-haiku-4-5")
+        _, kwargs = client.messages.create.call_args
+        assert kwargs["model"] == "claude-haiku-4-5"
+
+        llm.call_json("prompt")  # no override → default
+        _, kwargs = client.messages.create.call_args
+        assert kwargs["model"] == LLM_MODEL
+
+
+def test_mechanical_model_respects_flag():
+    """mechanical_model() returns the cheap tier only when LLM_TIER_MECHANICAL on."""
+    from cv_bau_students import config
+
+    with patch.object(config, "LLM_TIER_MECHANICAL", False):
+        assert llm.mechanical_model() == config.LLM_MODEL
+    with patch.object(config, "LLM_TIER_MECHANICAL", True):
+        assert llm.mechanical_model() == config.LLM_MODEL_CHEAP
+
+
 def test_no_text_block_raises_diagnostic_error():
     """Response with no text block → error names stop_reason + block types,
     not an empty 'First 500 chars' blank."""

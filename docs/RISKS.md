@@ -167,6 +167,20 @@ changes halve the cost to **~4 calls with no quality loss**:
 Net: **8 → 4** (extract, translate, prefill, reason) — the four being
 the irreducible core of the value proposition.
 
+**Model tiering (shipped behind a flag — research #7 RANK 1).** The
+mechanical calls (extraction, completion-question gen, role-question gen,
+ISCO resolve, meta-reflect) route through `llm.mechanical_model()`, which
+returns **Haiku 4.5** ($1/$5 per MTok vs Sonnet $3/$15 = ~3× cheaper +
+faster) when `CV_BAU_STUDENTS_TIER=1`. The two interpretive `think=True`
+calls (translate, reason) stay on Sonnet. **Off by default** — flip the
+env flag only after A/B-ing Haiku on a **Czech** CV (`data/raw_cv_samples/
+students/*.txt`): Czech skill extraction is already the pipeline's weak
+spot (~resolution gap), so validate no regression before enabling. Other
+research #7 levers (structured outputs to kill the `_strip_fences` retry,
+prompt caching on the 2 Sonnet calls, Batches API for the offline seed /
+CV-gen scripts) need a live key to measure and are deferred to owner
+branches (`perf/llm-structured-output`, etc.).
+
 **Scale path beyond that.** A fully deterministic *fast-match* mode
 (0 LLM: taxonomy overlap + bridge only) for bulk pre-ranking, with the
 LLM reserved for the recruiter-facing shortlist. Future option, not

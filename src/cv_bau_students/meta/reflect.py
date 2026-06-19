@@ -46,7 +46,7 @@ def reflect(*, batch_size: int = 20, log_path: Path | None = None) -> dict:
         metadata_json=json.dumps(metadata, ensure_ascii=False),
         prompt_files=", ".join(sorted(p.name for p in PROMPTS_DIR.glob("*.md"))),
     )
-    payload = llm.call_json(prompt)
+    payload = llm.call_json(prompt, model=llm.mechanical_model())
 
     _append_log(payload, metadata, log_path or LOG_FILE)
     return payload
