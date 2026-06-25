@@ -46,23 +46,29 @@ COMPLETION_MAX_ROUNDS = 2
 TRANSLATOR_CONFIDENCE_FLOOR = 0.3  # drop below this from scoring inputs
 HIGH_CONFIDENCE_THRESHOLD = 0.7
 
-# --- Matcher weights — UNUSED since PR #20 (total = skill_fit directly) ---
-# Kept for reference / future multi-axis mode. Do NOT import these in
-# score.py without updating the scoring formula and this comment.
+# --- Matcher weights — DEAD since PR #20 (total = skill_fit directly) ---
+# Not imported anywhere; kept only so git history shows the original intent.
+# Remove with the next DB migration cycle that also drops the personal_fit col.
+# Do NOT import in score.py without updating the scoring formula.
 WEIGHT_SKILL_FIT = 0.45
 WEIGHT_BRIDGE_FIT = 0.35
-WEIGHT_PERSONAL_FIT = 0.20  # personal_fit retired; value 0.0 hard-coded
+WEIGHT_PERSONAL_FIT = 0.20  # personal_fit retired from product; schema col kept at 0.0
 
 # --- ESCO target-role enrichment (skill_fit) ---
-# When an ad resolves to an ISCO occupation, skill_fit gets a capped bonus
-# for demonstrating occupation-essential ESCO skills *beyond* the recruiter's
-# hand-typed must-haves. Enrichment can only lift the base (recruiter must/nice
-# coverage stays the authoritative, interpretable signal) — never deflate it.
-# The ~300-skill ESCO essential set is deliberately NOT used as a denominator
-# (that would crush every score to single digits); breadth is rewarded, capped.
-ROLE_BONUS_CAP = 12.0  # max points the enrichment can add
-ROLE_BONUS_PER = 3.0  # points per evidenced role-essential skill beyond must
+# ROLE_BONUS_CAP / ROLE_BONUS_PER were planned for an enrichment bonus on top of
+# recruiter-curated coverage. The bonus was never wired (score.py computes plain
+# % coverage; no additive bonus exists). Remove when the enrichment feature lands
+# or when confirmed permanently deferred.
+ROLE_BONUS_CAP = 12.0  # planned: max points the enrichment bonus could add
+ROLE_BONUS_PER = 3.0  # planned: points per evidenced occupation-essential skill
 ROLE_ESSENTIAL_GAP_SAMPLE = 8  # how many missing role-essential skills to surface
+
+# --- Bridge-fit scale ---
+# _bridge_fit maps total bridging months onto 0–100. This constant is the
+# denominator: BRIDGE_FIT_MONTHS_SCALE months of bridging → score 0.
+# 24 = two years (junior ramp-up ceiling used by the level_checklists rubric).
+# Change here if the checklists are rebalanced for longer ramp-ups.
+BRIDGE_FIT_MONTHS_SCALE = 24
 
 # --- Database ---
 # Default SQLite file is at `./data/cv_bau_students.sqlite` relative to

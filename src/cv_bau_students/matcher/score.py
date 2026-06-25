@@ -16,7 +16,7 @@ profiles widen it.
 import statistics
 from collections.abc import Iterable
 
-from cv_bau_students.config import ROLE_ESSENTIAL_GAP_SAMPLE
+from cv_bau_students.config import BRIDGE_FIT_MONTHS_SCALE, ROLE_ESSENTIAL_GAP_SAMPLE
 from cv_bau_students.evidence import evidence_tier
 from cv_bau_students.jobads.repo import get_target_skills
 from cv_bau_students.levels.repo import bridge_plan, checklist_exists
@@ -240,8 +240,8 @@ def _bridge_fit(gaps: list[GapItem], *, has_rubric: bool) -> float | None:
         # Experience-only wall hit — cap at 35 regardless of other detail.
         return 35.0
     total_months = sum(g.bridgeable_in_months or 0 for g in gaps)
-    # Scale: 0 months → 100, 12 months → 50, 24 months → 0.
-    return max(0.0, 100.0 - (total_months / 24.0) * 100.0)
+    # Scale: 0 months → 100, BRIDGE_FIT_MONTHS_SCALE/2 → 50, full scale → 0.
+    return max(0.0, 100.0 - (total_months / BRIDGE_FIT_MONTHS_SCALE) * 100.0)
 
 
 def bridge_estimate(gaps: list[GapItem]) -> dict:
