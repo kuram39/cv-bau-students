@@ -1,7 +1,4 @@
-"""Constants for the cv_bau_students pipeline.
-
-Weights are documented in the README — do not tune without updating it.
-"""
+"""Constants for the cv_bau_students pipeline."""
 
 import os
 from pathlib import Path
@@ -45,13 +42,6 @@ LLM_THINK_ENABLED = os.environ.get("CV_BAU_STUDENTS_THINK", "1") != "0"
 COMPLETION_MAX_ROUNDS = 2
 TRANSLATOR_CONFIDENCE_FLOOR = 0.3  # drop below this from scoring inputs
 HIGH_CONFIDENCE_THRESHOLD = 0.7
-
-# --- Matcher weights — UNUSED since PR #20 (total = skill_fit directly) ---
-# Kept for reference / future multi-axis mode. Do NOT import these in
-# score.py without updating the scoring formula and this comment.
-WEIGHT_SKILL_FIT = 0.45
-WEIGHT_BRIDGE_FIT = 0.35
-WEIGHT_PERSONAL_FIT = 0.20  # personal_fit retired; value 0.0 hard-coded
 
 # --- ESCO target-role enrichment (skill_fit) ---
 # When an ad resolves to an ISCO occupation, skill_fit gets a capped bonus
