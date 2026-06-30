@@ -88,19 +88,54 @@ with an empty `email` skips it.
 
 ## Current state / open items
 
-- Phases 1–12 shipped. Model on Sonnet 4.6 + selective thinking (PRs #1–#3 merged).
-- Target-role-first scoring + recruiter audit shipped (`feat/target-role-scoring`):
-  ads resolve to an ISCO occupation (`roles/isco_resolver.py`, lexical→LLM);
-  `expected_skills_for_isco()` now feeds skill_fit as a capped enrichment bonus +
-  gap surface (`matcher/score.py`, `SkillFitDetail`); recruiter drill-in shows the
-  breakdown + original CV text (`Candidate.raw_cv_text`).
-- Deferred (candidates, not started):
-  - LLM-cost optimisation (8→4 calls per applicant) — documented in `docs/RISKS.md`,
-    planned for a `perf/llm-cost` branch.
-  - Czech resolution lift: `resolve_skill` already has a diacritics fallback;
-    `scripts/measure_resolution.py` quantifies the real coverage % before any
-    further work (ESCO Czech-alias load / embeddings — gated on that number).
-  - README/Mermaid refresh for the dual-panel flow; slide deck.
+PRs #1–#51 merged (2 closed without merge: #11 review-doc, #13 superseded by #12).
+Last routine review: 2026-06-30.
+
+### Shipped (PRs #1–#51)
+
+- **Model + thinking** — Sonnet 4.6 default; selective `think=True` on 2 interpretive
+  calls (translate, reason). Budgeted thinking + timeout guard (#17, #19).
+- **Target-role-first scoring** — ads resolve to ISCO; `expected_skills_for_isco()`
+  feeds skill_fit enrichment bonus + gap surface; recruiter audit drill-in shows
+  breakdown + raw CV text (#5).
+- **ESCO namespace** — candidate skills resolved into ESCO ids via layered resolver
+  (diacritics → aliases → rapidfuzz → LLM esco_term) (#6, #10).
+- **NSP/CDK Czech aliases** — live API loader for Czech skill-name aliases (#7, #12).
+- **Evidence-strength tiers (doloženost)** — replaces coarse LLM-confidence; tiers
+  mapped from source_type (thesis > internship > school > brigáda > other) with a
+  `work` tier fix so real employment isn't weak (#28, #49).
+- **Candidate type detector** — classifies relative to the target ad (student /
+  fresh-grad / career-changer / experienced) with ad-relative thresholds; brigáda
+  weighted 0.3× toward real_work_years (#30, #31, #33).
+- **Explainability** — counterfactual recourse: per-missing-skill coverage lift shown
+  to recruiter; honest precision disclosure (#37).
+- **Human oversight** — recruiter override + override_note + decision_at schema cols;
+  bias-audit panel with selection counts per candidate type (#38).
+- **Bridge_fit as months-to-ready** — `bridge_estimate()` sums per-gap
+  `bridgeable_in_months` from the rubric; N/A guarded when no rubric exists (#48).
+- **Audit threshold slider** — 0–100 % step-5 slider in the Audit tab; replaces
+  hard-coded 50 % cutoff (#51).
+- **Postgres path** — Cloud-safe persistence; idempotent `_migrate_columns` (no
+  DuplicateColumn crash on restart) (#16, #50).
+- **Perf** — memoized skill resolvers, role-scoped seed (~2k rows vs 200k),
+  smaller thinking budget, request timeout (#18, #19, #24).
+- **Docs** — ARCHITECTURE.md + Czech translation, Czech primary README, deep-research
+  reports #1–#8 (#32, #43, #46, #47, #35).
+
+### Deferred (priority order)
+
+1. **LLM-cost 8→4 calls** — documented in `docs/RISKS.md`; planned `perf/llm-cost`
+   branch. Highest ROI before any real-user volume.
+2. **Bridge rubric coverage** — only 8 domains have `level_checklists`; expand to
+   cover remaining corpus domains or surface N/A transparently.
+3. **Czech resolution measurement** — `scripts/measure_resolution.py` ready but not
+   run on final pipeline. Gate embeddings / extra alias work on this number.
+4. **Detector calibration** — brigáda 0.3× and 2y real-work thresholds are heuristic;
+   revisit once real CVs are processed.
+5. **Multi-ad corpus ranking** — prefilter ignores curated target skills (see RISKS.md
+   "Known gap"); acceptable for single-target MVP, breaks for multi-ad ranking.
+6. **Slide deck / demo script** update to reflect dual-panel flow and new scoring UX.
+
 - `docs/RISKS.md` is the interview answer-key (failure tiers, cost trade-off, scale).
 
 ## Gotchas

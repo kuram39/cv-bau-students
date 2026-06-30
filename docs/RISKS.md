@@ -195,3 +195,54 @@ result non-empty, so the full-list fallback doesn't trigger).
 demo. It only matters once corpus-wide ranking against curated sets is a
 product feature. Fix when that lands: union `ad_target_skills` skill_ids +
 capability esco ids into the prefilter's overlap check.
+
+---
+
+## PR Review 2026-06-30 — alignment check + new risk register entries
+
+**Review scope:** PRs #1–#51 (45 merged, 2 closed-not-merged).
+**Core assignment check:** AI matching platform processing CVs (extraction of
+personal data, education, work experience, skills, languages) → match to job ads.
+
+### Alignment verdict: INTACT
+
+All shipped features map to the core pipeline or responsible-AI obligations.
+No scope creep detected. Three-axis scoring (skill_fit / bridge_fit /
+personal_fit), ESCO namespace, and the two-panel Streamlit UI are coherent
+and consistent with the brief.
+
+### New risks introduced by PRs #28–#51
+
+| # | Risk | Tier | Status |
+|---|---|---|---|
+| 23 | `bridge_estimate` months are hand-curated for 8 domains only | Tier 2 | 🟡 Expand rubrics or suppress display for uncovered domains |
+| 24 | Detector thresholds (brigáda 0.3×, 2y real-work gate) are heuristic | Tier 4 | ⏳ Calibrate on first real-CV batch |
+| 25 | Human-override UX not tested with a real recruiter | Tier 2 | ⏳ User test before presenting override as a safety feature |
+| 26 | Counterfactual recourse shows per-skill lift but not whether the skill is acquirable by this candidate | Tier 4 | 🟡 Add disclaimer in UI or scope to bridge-plan skills only |
+| 27 | Czech README primary + EN secondary → English-only readers miss key info | Low | ✅ `docs/README.en.md` exists; pointer in Czech README |
+
+### Recommended next PRs (priority order)
+
+1. **`perf/llm-cost`** — 8→4 calls (defer 3 preview-ad reasoning calls + reuse
+   translate). Documented in the "LLM cost at scale" section above. Highest ROI,
+   no quality loss. Estimate: ~4h.
+2. **`feat/bridge-rubrics`** — expand `level_checklists` beyond the 8 shipped
+   domains so bridge_fit months never shows N/A on a real ad. Or gate display
+   on checklist coverage.
+3. **`chore/measure-resolution`** — run `scripts/measure_resolution.py` on the
+   demo CVs with the final pipeline (NSP aliases + LLM esco_term). Record the
+   number; gates the embeddings decision.
+4. **`feat/multi-ad-prefilter`** — fix the corpus prefilter gap (item #22 above)
+   before the single-target MVP becomes a multi-ad product.
+5. **`feat/vendor-tool-aliases`** — Power BI / Tableau / Excel / pandas are absent
+   from ESCO; add a small curated alias table so they resolve to the nearest ESCO
+   skill rather than falling through to `other`. Low effort, high demo impact.
+
+### What NOT to build next (anti-drift guard)
+
+- Embeddings / pgvector — ROI is bad until measure_resolution confirms a real gap
+  that the LLM esco_term layer doesn't cover (see Phase C decision above).
+- NSP occupation→skill map — evaluated, rejected (data doesn't fit matcher; see
+  Tier 2 risk #8 analysis above).
+- Multi-tenant / auth — out of scope for round-2 demo.
+- Real-time ingest / Kafka — premature. Batch ingest is fine for demo scale.
